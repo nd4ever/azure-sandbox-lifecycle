@@ -42,6 +42,46 @@ The deployment identity needs these roles at the target subscription scope:
 Use narrower custom roles before operating this project in a shared production
 subscription.
 
+## Configuration
+
+This project ships with no subscription-specific values hardcoded. Replace the
+placeholders below with your own values. Names such as `rg-sbx-notifications`,
+`acs-sbx`, and `rg-sbx-approval` in the examples are illustrative — rename them
+freely.
+
+Local commands and module parameters:
+
+| Placeholder                                | Where it is used                                         |
+|--------------------------------------------|----------------------------------------------------------|
+| `<subscription-id>`                        | `Set-AzContext` / `-SubscriptionId`                      |
+| `<owner-email>`                            | `New-AzSandbox -Owner`                                    |
+| `<approver-email>`                         | `Invoke-AzSandboxCleanupAudit -ApproverEmail`            |
+| `<acs-connection-string>`                  | `-AcsConnectionString`                                   |
+| `<managed-domain>.azurecomm.net`           | `-AcsSenderAddress`                                       |
+| `<teams-webhook-url>`                       | `-TeamsWebhookUrl`                                        |
+| `<STRONG_SHARED_SECRET>`                    | `-SigningSecret` and the Function `SANDBOX_SIGNING_SECRET`|
+| `<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>`       | Function app name and `-ApprovalBaseUrl`                 |
+| `<managed-identity-client-id>`             | `Remove-AzExpiredSandbox -ManagedIdentityClientId`       |
+
+GitHub Actions — set these under **Settings → Secrets and variables → Actions**:
+
+| Name                             | Type     | Purpose                                    |
+|----------------------------------|----------|--------------------------------------------|
+| `AZURE_CLIENT_ID`                | Variable | OIDC app (client) ID for `azure/login`     |
+| `AZURE_TENANT_ID`                | Variable | Entra tenant ID for `azure/login`          |
+| `AZURE_SUBSCRIPTION_ID`          | Variable | Target subscription for audit and cleanup  |
+| `SANDBOX_ACS_SENDER`             | Variable | Communication Services sender address      |
+| `SANDBOX_APPROVAL_BASE_URL`      | Variable | Approval Function app base URL             |
+| `AZURE_DELETE_IDENTITY_CLIENT_ID`| Variable | Managed identity client ID for deletion    |
+| `SANDBOX_ACS_CONNECTION_STRING`  | Secret   | Communication Services connection string   |
+| `SANDBOX_TEAMS_WEBHOOK_URL`      | Secret   | Teams channel webhook URL                  |
+| `SANDBOX_SIGNING_SECRET`         | Secret   | Shared HMAC secret for approval tokens     |
+
+Approval infrastructure — replace the placeholders in
+[infra/approval/main.sample.bicepparam](infra/approval/main.sample.bicepparam)
+before deploying (`location`, `functionAppName`, `signingSecret`,
+`teamsWebhookUrl`).
+
 ## Start locally
 
 ```powershell
