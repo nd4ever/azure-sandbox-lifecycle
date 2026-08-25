@@ -19,10 +19,13 @@
         'Connect-AzSandbox'
         'Export-AzSandboxDashboard'
         'Get-AzSandbox'
+        'Invoke-AzSandboxApprovedDeletion'
         'Invoke-AzSandboxCleanupAudit'
         'New-AzSandbox'
+        'New-AzSandboxApprovalToken'
         'Remove-AzExpiredSandbox'
         'Set-AzSandboxExpiration'
+        'Test-AzSandboxApprovalToken'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()

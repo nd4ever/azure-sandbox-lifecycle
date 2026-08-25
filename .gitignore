@@ -1,3 +1,11 @@
 out/
 sandbox-inventory.html
 *.log
+
+# Azure Functions local + packaged artifacts
+functions/local.settings.json
+functions/Modules/
+*.zip
+
+# Compiled Bicep output
+infra/**/*.json

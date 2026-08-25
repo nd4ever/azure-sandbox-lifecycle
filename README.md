@@ -181,6 +181,62 @@ delivery, add the `SANDBOX_ACS_CONNECTION_STRING` secret and the
 `SANDBOX_TEAMS_WEBHOOK_URL` secret. See the skill at
 `.github/skills/sandbox-cleanup-audit/SKILL.md` for details.
 
+## Button-triggered deletion
+
+An approval Function app lets an approver delete expired sandboxes by clicking a
+button in the Outlook email or Teams card. The button opens a confirmation page,
+and only the confirming click runs the deletion. The Function authenticates with
+its own system-assigned managed identity, so no credentials are shared.
+
+How it works:
+
+1. The audit signs a short-lived HMAC token per approval that encodes the exact
+   resource groups, an action (`approve` or `reject`), and an expiry. Supply
+   `-ApprovalBaseUrl` and `-SigningSecret` to embed signed links in the email and
+   Teams card.
+2. The email link and Teams button open `/api/approve` on the Function app. A
+   `GET` shows a confirmation page; the `POST` validates the token and deletes.
+3. `Invoke-AzSandboxApprovedDeletion` deletes only the resource groups named in
+   the token and re-verifies each still carries the managed tag before removal.
+
+The token is signed and time-limited but replayable until it expires, so keep the
+TTL short (`-ApprovalTtlHours`, default 8).
+
+Provision the Function app, storage, and the managed identity role assignment
+with Bicep. Everything environment-specific is a parameter — copy the sample and
+replace the placeholders:
+
+```bash
+az deployment sub create \
+  --location <AZURE_LOCATION> \
+  --template-file infra/approval/main.bicep \
+  --parameters infra/approval/main.sample.bicepparam
+```
+
+Package and publish the Function code (copies the module into the app):
+
+```powershell
+./scripts/Build-FunctionPackage.ps1
+az functionapp deployment source config-zip `
+  --name <GLOBALLY_UNIQUE_FUNCTION_APP_NAME> `
+  --resource-group rg-sbx-approval `
+  --src ./out/functions/approval-functions.zip
+```
+
+Use the `approvalBaseUrl` output as `SANDBOX_APPROVAL_BASE_URL`, and use the same
+`signingSecret` value for both the Function app setting `SANDBOX_SIGNING_SECRET`
+and the audit's `-SigningSecret`. Then a signed run looks like:
+
+```powershell
+Invoke-AzSandboxCleanupAudit `
+  -GracePeriodHours 24 `
+  -AcsConnectionString $acs `
+  -AcsSenderAddress 'donotreply@<managed-domain>.azurecomm.net' `
+  -TeamsWebhookUrl '<teams-webhook-url>' `
+  -ApprovalBaseUrl 'https://<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>.azurewebsites.net' `
+  -SigningSecret '<STRONG_SHARED_SECRET>'
+```
+
 ## Lifecycle metadata
 
 The resource group is the source of truth for lifecycle state:

@@ -100,6 +100,9 @@ Parameters for `Invoke-AzSandboxCleanupAudit`:
 | `AcsConnectionString` | None                             | Communication Services connection string for email |
 | `AcsSenderAddress` | `FromAddress`                       | Communication Services sender address              |
 | `TeamsWebhookUrl`  | None                                | Teams webhook that receives an approval card       |
+| `ApprovalBaseUrl`  | None                                | Base URL of the approval Function app for links    |
+| `SigningSecret`    | None                                | Shared HMAC secret used to sign approval tokens    |
+| `ApprovalTtlHours` | `8`                                 | Hours before a signed approval link expires        |
 | `SmtpServer`       | None                                | SMTP host; used when no ACS connection string      |
 | `SmtpPort`         | `587`                               | SMTP port                                          |
 | `SmtpCredential`   | None                                | Credential for authenticated SMTP delivery         |
@@ -109,6 +112,14 @@ Deletion parameter added to `Remove-AzExpiredSandbox`:
 | Parameter                 | Default | Description                                             |
 |---------------------------|---------|---------------------------------------------------------|
 | `ManagedIdentityClientId` | None    | Client ID of the user-assigned managed identity to use  |
+
+Button-triggered deletion functions:
+
+| Function                        | Purpose                                                        |
+|---------------------------------|---------------------------------------------------------------|
+| `New-AzSandboxApprovalToken`    | Signs a short-lived HMAC token for the exact candidate groups  |
+| `Test-AzSandboxApprovalToken`   | Validates a token signature and expiry and returns its payload |
+| `Invoke-AzSandboxApprovedDeletion` | Deletes only the groups named in a validated token payload  |
 
 ## Script Reference
 
@@ -141,6 +152,35 @@ Remove-AzExpiredSandbox `
   -GracePeriodHours 24 `
   -ManagedIdentityClientId '00000000-0000-0000-0000-000000000000' `
   -Confirm:$false
+```
+
+Enable button-triggered deletion by deploying the approval Function app and
+passing signed links into the audit. Everything environment-specific is a
+Bicep parameter:
+
+```bash
+az deployment sub create \
+  --location <AZURE_LOCATION> \
+  --template-file infra/approval/main.bicep \
+  --parameters infra/approval/main.sample.bicepparam
+
+./scripts/Build-FunctionPackage.ps1
+az functionapp deployment source config-zip \
+  --name <GLOBALLY_UNIQUE_FUNCTION_APP_NAME> \
+  --resource-group rg-sbx-approval \
+  --src ./out/functions/approval-functions.zip
+```
+
+Then embed signed approve/reject links by supplying the approval base URL and the
+shared signing secret (the same value set as the Function app's
+`SANDBOX_SIGNING_SECRET`):
+
+```powershell
+Invoke-AzSandboxCleanupAudit `
+  -GracePeriodHours 24 `
+  -TeamsWebhookUrl '<teams-webhook-url>' `
+  -ApprovalBaseUrl 'https://<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>.azurewebsites.net' `
+  -SigningSecret '<STRONG_SHARED_SECRET>'
 ```
 
 The generated workflow lives at

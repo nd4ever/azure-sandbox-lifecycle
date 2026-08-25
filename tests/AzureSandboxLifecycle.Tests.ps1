@@ -227,6 +227,93 @@ Describe 'Invoke-AzSandboxCleanupAudit' -Tag 'Unit' {
         $Result.NotificationStatus | Should -Be 'TeamsOnly'
         Should -Invoke Send-AzSandboxTeamsMessage -ModuleName AzureSandboxLifecycle -Times 1 -Exactly
     }
+
+    It 'Generates signed approval links when a base URL and signing secret are configured' {
+        $AuditDir = Join-Path $TestDrive 'audit-approval'
+        $Result = Invoke-AzSandboxCleanupAudit -GracePeriodHours 24 -AuditPath $AuditDir -TeamsWebhookUrl 'https://example.webhook.office.com/webhookb2/abc' -ApprovalBaseUrl 'https://fn.example.net' -SigningSecret 'shared-secret'
+
+        $Result.ApprovalRequested | Should -BeTrue
+        Should -Invoke Send-AzSandboxTeamsMessage -ModuleName AzureSandboxLifecycle -Times 1 -Exactly -ParameterFilter {
+            $ApproveUrl -match '^https://fn\.example\.net/api/approve\?token=' -and $RejectUrl -match '^https://fn\.example\.net/api/approve\?token='
+        }
+    }
+}
+
+Describe 'New-AzSandboxApprovalToken' -Tag 'Unit' {
+    It 'Round-trips an approval payload with a matching secret' {
+        $Candidate = [pscustomobject]@{ SubscriptionId = 'sub-one'; ResourceGroupName = 'expired' }
+        $Token = New-AzSandboxApprovalToken -AuditId 'audit-1' -Action 'approve' -Candidate @($Candidate) -Secret 'shared-secret'
+        $Payload = Test-AzSandboxApprovalToken -Token $Token -Secret 'shared-secret'
+
+        $Payload.aud | Should -Be 'sandbox-approval'
+        $Payload.act | Should -Be 'approve'
+        $Payload.aid | Should -Be 'audit-1'
+        @($Payload.rgs).n | Should -Be 'expired'
+    }
+
+    It 'Rejects a tampered token' {
+        $Candidate = [pscustomobject]@{ SubscriptionId = 'sub-one'; ResourceGroupName = 'expired' }
+        $Token = New-AzSandboxApprovalToken -AuditId 'audit-1' -Action 'approve' -Candidate @($Candidate) -Secret 'shared-secret'
+
+        { Test-AzSandboxApprovalToken -Token ($Token + 'x') -Secret 'shared-secret' } | Should -Throw
+    }
+
+    It 'Rejects a token signed with a different secret' {
+        $Candidate = [pscustomobject]@{ SubscriptionId = 'sub-one'; ResourceGroupName = 'expired' }
+        $Token = New-AzSandboxApprovalToken -AuditId 'audit-1' -Action 'approve' -Candidate @($Candidate) -Secret 'shared-secret'
+
+        { Test-AzSandboxApprovalToken -Token $Token -Secret 'other-secret' } | Should -Throw
+    }
+
+    It 'Rejects an expired token' {
+        $Candidate = [pscustomobject]@{ SubscriptionId = 'sub-one'; ResourceGroupName = 'expired' }
+        $Past = [DateTimeOffset]::UtcNow.AddHours(-2)
+        $Token = New-AzSandboxApprovalToken -AuditId 'audit-1' -Action 'approve' -Candidate @($Candidate) -Secret 'shared-secret' -TtlHours 1 -Now $Past
+
+        { Test-AzSandboxApprovalToken -Token $Token -Secret 'shared-secret' } | Should -Throw '*expired*'
+    }
+}
+
+Describe 'Invoke-AzSandboxApprovedDeletion' -Tag 'Unit' {
+    BeforeEach {
+        Mock Get-AzContext {
+            [pscustomobject]@{ Subscription = [pscustomobject]@{ Id = 'sub-one' } }
+        } -ModuleName AzureSandboxLifecycle
+        Mock Set-AzContext {} -ModuleName AzureSandboxLifecycle
+        Mock Remove-AzResourceGroup {} -ModuleName AzureSandboxLifecycle
+    }
+
+    It 'Deletes only the resource groups named in the token payload' {
+        Mock Get-AzResourceGroup {
+            [pscustomobject]@{ ResourceGroupName = 'expired'; ResourceId = '/subscriptions/sub-one/resourceGroups/expired'; Tags = @{ 'sandbox-lifecycle_managed' = 'true' } }
+        } -ModuleName AzureSandboxLifecycle
+
+        $Payload = [pscustomobject]@{ aud = 'sandbox-approval'; act = 'approve'; aid = 'audit-1'; rgs = @([pscustomobject]@{ s = 'sub-one'; n = 'expired' }) }
+        $Result = Invoke-AzSandboxApprovedDeletion -TokenPayload $Payload -Confirm:$false
+
+        $Result.Status | Should -Be 'Deleted'
+        Should -Invoke Remove-AzResourceGroup -ModuleName AzureSandboxLifecycle -Times 1 -Exactly -ParameterFilter {
+            $Name -eq 'expired'
+        }
+    }
+
+    It 'Skips a resource group that no longer carries the managed tag' {
+        Mock Get-AzResourceGroup {
+            [pscustomobject]@{ ResourceGroupName = 'expired'; ResourceId = '/subscriptions/sub-one/resourceGroups/expired'; Tags = @{} }
+        } -ModuleName AzureSandboxLifecycle
+
+        $Payload = [pscustomobject]@{ aud = 'sandbox-approval'; act = 'approve'; aid = 'audit-1'; rgs = @([pscustomobject]@{ s = 'sub-one'; n = 'expired' }) }
+        $Result = Invoke-AzSandboxApprovedDeletion -TokenPayload $Payload -Confirm:$false
+
+        $Result.Status | Should -Be 'NotManaged'
+        Should -Invoke Remove-AzResourceGroup -ModuleName AzureSandboxLifecycle -Times 0 -Exactly
+    }
+
+    It 'Refuses to delete when the token action is not approve' {
+        $Payload = [pscustomobject]@{ aud = 'sandbox-approval'; act = 'reject'; aid = 'audit-1'; rgs = @([pscustomobject]@{ s = 'sub-one'; n = 'expired' }) }
+
+        { Invoke-AzSandboxApprovedDeletion -TokenPayload $Payload -Confirm:$false } | Should -Throw
+    }
 }
 
 AfterAll {

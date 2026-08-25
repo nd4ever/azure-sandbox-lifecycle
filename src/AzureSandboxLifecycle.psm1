@@ -512,6 +512,69 @@ function Remove-AzExpiredSandbox {
     }
 }
 
+function Invoke-AzSandboxApprovedDeletion {
+    <#
+    .SYNOPSIS
+        Deletes the exact sandboxes named in a validated approval token payload.
+    .DESCRIPTION
+        Deletes only the resource groups listed in the decoded approval token. As
+        defense in depth, each resource group is re-verified to still carry the
+        lifecycle managed tag before deletion unless SkipManagedTagCheck is set.
+        Intended to run under a managed identity established by the host.
+    .PARAMETER TokenPayload
+        Decoded approval token payload returned by Test-AzSandboxApprovalToken.
+    .PARAMETER SkipManagedTagCheck
+        Deletes without re-verifying the managed tag. Use only in tests.
+    .EXAMPLE
+        $Payload = Test-AzSandboxApprovalToken -Token $Token -Secret $Secret
+        Invoke-AzSandboxApprovedDeletion -TokenPayload $Payload -Confirm:$false
+    .OUTPUTS
+        System.Management.Automation.PSCustomObject
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
+    [OutputType([pscustomobject])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNull()]
+        [object]$TokenPayload,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$SkipManagedTagCheck
+    )
+
+    if ($TokenPayload.act -ne 'approve') {
+        throw "The approval token action '$($TokenPayload.act)' does not authorize deletion."
+    }
+
+    foreach ($Entry in @($TokenPayload.rgs)) {
+        $SubId = [string]$Entry.s
+        $RgName = [string]$Entry.n
+        if ([string]::IsNullOrWhiteSpace($RgName)) {
+            continue
+        }
+
+        Select-AzSandboxSubscriptionContext -SubscriptionId $SubId | Out-Null
+        $ResourceGroup = Get-AzResourceGroup -Name $RgName -ErrorAction SilentlyContinue
+        if ($null -eq $ResourceGroup) {
+            [pscustomobject]@{ Name = $RgName; SubscriptionId = $SubId; Status = 'NotFound'; RemovedOn = $null }
+            continue
+        }
+
+        if (-not $SkipManagedTagCheck) {
+            $ManagedValue = Get-AzSandboxTagValue -Tags $ResourceGroup.Tags -Name $script:ManagedTag
+            if ($ManagedValue -ne 'true') {
+                [pscustomobject]@{ Name = $RgName; SubscriptionId = $SubId; Status = 'NotManaged'; RemovedOn = $null }
+                continue
+            }
+        }
+
+        if ($PSCmdlet.ShouldProcess($RgName, "Permanently delete approved sandbox from subscription $SubId")) {
+            Remove-AzResourceGroup -Name $RgName -Force -ErrorAction Stop | Out-Null
+            [pscustomobject]@{ Name = $RgName; SubscriptionId = $SubId; Status = 'Deleted'; RemovedOn = [DateTimeOffset]::UtcNow }
+        }
+    }
+}
+
 function ConvertTo-AzSandboxDashboardHtml {
     <#
     .SYNOPSIS
@@ -754,6 +817,190 @@ function Export-AzSandboxDashboard {
     return Get-Item -LiteralPath $Path
 }
 
+function ConvertTo-AzSandboxBase64Url {
+    <#
+    .SYNOPSIS
+        Encodes bytes as base64url text without padding.
+    .PARAMETER Bytes
+        Bytes to encode.
+    .OUTPUTS
+        System.String
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [byte[]]$Bytes
+    )
+
+    return [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+function ConvertFrom-AzSandboxBase64Url {
+    <#
+    .SYNOPSIS
+        Decodes base64url text into bytes.
+    .PARAMETER Text
+        Base64url text to decode.
+    .OUTPUTS
+        System.Byte[]
+    #>
+    [CmdletBinding()]
+    [OutputType([byte[]])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Text
+    )
+
+    $Padded = $Text.Replace('-', '+').Replace('_', '/')
+    switch ($Padded.Length % 4) {
+        2 { $Padded += '==' }
+        3 { $Padded += '=' }
+    }
+
+    return [Convert]::FromBase64String($Padded)
+}
+
+function New-AzSandboxApprovalToken {
+    <#
+    .SYNOPSIS
+        Creates an HMAC-signed, time-limited approval token for sandbox deletion.
+    .DESCRIPTION
+        Encodes the audit id, action, expiry, and the exact resource groups into a
+        compact signed token. The token is the capability that authorizes the
+        deletion endpoint, so it is signed with a shared secret and expires quickly.
+    .PARAMETER AuditId
+        Audit correlation identifier.
+    .PARAMETER Action
+        Authorized action: approve or reject.
+    .PARAMETER Candidate
+        Sandbox records the token authorizes.
+    .PARAMETER Secret
+        Shared HMAC signing secret.
+    .PARAMETER TtlHours
+        Hours until the token expires.
+    .PARAMETER Now
+        Timestamp used to compute expiry.
+    .OUTPUTS
+        System.String
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Builds a token string and performs no state change.')]
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$AuditId,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('approve', 'reject')]
+        [string]$Action,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [object[]]$Candidate,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Secret,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateRange(1, 168)]
+        [int]$TtlHours = 8,
+
+        [Parameter(Mandatory = $false)]
+        [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow
+    )
+
+    $ResourceGroups = @($Candidate | ForEach-Object {
+        [ordered]@{ s = [string]$_.SubscriptionId; n = [string]$_.ResourceGroupName }
+    })
+
+    $Payload = [ordered]@{
+        aud = 'sandbox-approval'
+        aid = $AuditId
+        act = $Action
+        exp = [int64]$Now.AddHours($TtlHours).ToUnixTimeSeconds()
+        rgs = $ResourceGroups
+    }
+
+    $PayloadJson = $Payload | ConvertTo-Json -Depth 6 -Compress
+    $SigningInput = ConvertTo-AzSandboxBase64Url -Bytes ([Text.Encoding]::UTF8.GetBytes($PayloadJson))
+
+    $Hmac = [System.Security.Cryptography.HMACSHA256]::new([Text.Encoding]::UTF8.GetBytes($Secret))
+    try {
+        $Signature = ConvertTo-AzSandboxBase64Url -Bytes ($Hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($SigningInput)))
+    }
+    finally {
+        $Hmac.Dispose()
+    }
+
+    return "$SigningInput.$Signature"
+}
+
+function Test-AzSandboxApprovalToken {
+    <#
+    .SYNOPSIS
+        Validates an approval token signature and expiry and returns its payload.
+    .PARAMETER Token
+        Signed approval token.
+    .PARAMETER Secret
+        Shared HMAC signing secret.
+    .PARAMETER Now
+        Timestamp used to evaluate expiry.
+    .OUTPUTS
+        System.Management.Automation.PSCustomObject
+    #>
+    [CmdletBinding()]
+    [OutputType([pscustomobject])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Token,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Secret,
+
+        [Parameter(Mandatory = $false)]
+        [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow
+    )
+
+    $Parts = $Token.Split('.')
+    if ($Parts.Count -ne 2) {
+        throw 'The approval token is malformed.'
+    }
+
+    $SigningInput = $Parts[0]
+    $Hmac = [System.Security.Cryptography.HMACSHA256]::new([Text.Encoding]::UTF8.GetBytes($Secret))
+    try {
+        $Expected = ConvertTo-AzSandboxBase64Url -Bytes ($Hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($SigningInput)))
+    }
+    finally {
+        $Hmac.Dispose()
+    }
+
+    $ExpectedBytes = [Text.Encoding]::UTF8.GetBytes($Expected)
+    $ActualBytes = [Text.Encoding]::UTF8.GetBytes($Parts[1])
+    if (-not [System.Security.Cryptography.CryptographicOperations]::FixedTimeEquals($ExpectedBytes, $ActualBytes)) {
+        throw 'The approval token signature is invalid.'
+    }
+
+    $PayloadJson = [Text.Encoding]::UTF8.GetString((ConvertFrom-AzSandboxBase64Url -Text $SigningInput))
+    $Payload = $PayloadJson | ConvertFrom-Json
+
+    if ($Payload.aud -ne 'sandbox-approval') {
+        throw 'The approval token audience is invalid.'
+    }
+
+    if ([int64]$Payload.exp -le [int64]$Now.ToUnixTimeSeconds()) {
+        throw 'The approval token has expired.'
+    }
+
+    return $Payload
+}
+
 function ConvertTo-AzSandboxApprovalEmail {
     <#
     .SYNOPSIS
@@ -791,7 +1038,13 @@ function ConvertTo-AzSandboxApprovalEmail {
         [string]$AuditId,
 
         [Parameter(Mandatory = $false)]
-        [DateTimeOffset]$GeneratedOn = [DateTimeOffset]::UtcNow
+        [DateTimeOffset]$GeneratedOn = [DateTimeOffset]::UtcNow,
+
+        [Parameter(Mandatory = $false)]
+        [string]$ApproveUrl,
+
+        [Parameter(Mandatory = $false)]
+        [string]$RejectUrl
     )
 
     $Escape = {
@@ -815,6 +1068,19 @@ function ConvertTo-AzSandboxApprovalEmail {
     }
 
     $Subject = "[Approval required] $($Candidate.Count) Azure sandbox(es) pending deletion"
+    $ActionButtonsHtml = ''
+    if (-not [string]::IsNullOrWhiteSpace($ApproveUrl) -and -not [string]::IsNullOrWhiteSpace($RejectUrl)) {
+        $ApproveHref = & $Escape $ApproveUrl
+        $RejectHref = & $Escape $RejectUrl
+        $ActionButtonsHtml = @"
+  <p style="margin-top: 20px;">
+    <a href="$ApproveHref" style="background-color: #107c10; color: #ffffff; padding: 10px 18px; text-decoration: none; border-radius: 4px; font-weight: 600;">Approve deletion</a>
+    &nbsp;&nbsp;
+    <a href="$RejectHref" style="background-color: #a4262c; color: #ffffff; padding: 10px 18px; text-decoration: none; border-radius: 4px; font-weight: 600;">Reject</a>
+  </p>
+  <p style="color: #605e5c; font-size: 12px;">These links open a confirmation page. Deletion runs only after you confirm.</p>
+"@
+    }
     $BodyHtml = @"
 <!doctype html>
 <html lang="en">
@@ -828,6 +1094,7 @@ function ConvertTo-AzSandboxApprovalEmail {
 $Rows
     </tbody>
   </table>
+$ActionButtonsHtml
   <p>Approver: $ApproverEmail</p>
 </body>
 </html>
@@ -964,7 +1231,13 @@ function Send-AzSandboxTeamsMessage {
 
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
-        [string]$AuditId
+        [string]$AuditId,
+
+        [Parameter(Mandatory = $false)]
+        [string]$ApproveUrl,
+
+        [Parameter(Mandatory = $false)]
+        [string]$RejectUrl
     )
 
     $Facts = @($Candidate | ForEach-Object {
@@ -972,21 +1245,30 @@ function Send-AzSandboxTeamsMessage {
         [ordered]@{ title = [string]$_.Name; value = "$([string]$_.Owner) - expired $ExpiresLabel" }
     })
 
+    $CardContent = [ordered]@{
+        '$schema' = 'http://adaptivecards.io/schemas/adaptive-card.json'
+        type      = 'AdaptiveCard'
+        version   = '1.4'
+        body      = @(
+            [ordered]@{ type = 'TextBlock'; size = 'Large'; weight = 'Bolder'; text = 'Azure sandbox deletion approval' }
+            [ordered]@{ type = 'TextBlock'; wrap = $true; text = "Audit $AuditId - $($Candidate.Count) sandbox(es) pending deletion." }
+            [ordered]@{ type = 'FactSet'; facts = $Facts }
+        )
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ApproveUrl) -and -not [string]::IsNullOrWhiteSpace($RejectUrl)) {
+        $CardContent['actions'] = @(
+            [ordered]@{ type = 'Action.OpenUrl'; title = 'Approve deletion'; url = $ApproveUrl }
+            [ordered]@{ type = 'Action.OpenUrl'; title = 'Reject'; url = $RejectUrl }
+        )
+    }
+
     $Card = [ordered]@{
         type        = 'message'
         attachments = @(
             [ordered]@{
                 contentType = 'application/vnd.microsoft.card.adaptive'
-                content     = [ordered]@{
-                    '$schema' = 'http://adaptivecards.io/schemas/adaptive-card.json'
-                    type      = 'AdaptiveCard'
-                    version   = '1.4'
-                    body      = @(
-                        [ordered]@{ type = 'TextBlock'; size = 'Large'; weight = 'Bolder'; text = 'Azure sandbox deletion approval' }
-                        [ordered]@{ type = 'TextBlock'; wrap = $true; text = "Audit $AuditId - $($Candidate.Count) sandbox(es) pending deletion." }
-                        [ordered]@{ type = 'FactSet'; facts = $Facts }
-                    )
-                }
+                content     = $CardContent
             }
         )
     } | ConvertTo-Json -Depth 20
@@ -1063,6 +1345,16 @@ function Invoke-AzSandboxCleanupAudit {
         [string]$TeamsWebhookUrl,
 
         [Parameter(Mandatory = $false)]
+        [string]$ApprovalBaseUrl,
+
+        [Parameter(Mandatory = $false)]
+        [string]$SigningSecret,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateRange(1, 168)]
+        [int]$ApprovalTtlHours = 8,
+
+        [Parameter(Mandatory = $false)]
         [string]$SmtpServer,
 
         [Parameter(Mandatory = $false)]
@@ -1083,7 +1375,19 @@ function Invoke-AzSandboxCleanupAudit {
 
     New-Item -ItemType Directory -Path $AuditPath -Force | Out-Null
 
-    $Email = ConvertTo-AzSandboxApprovalEmail -Candidate $Candidates -ApproverEmail $ApproverEmail -FromAddress $FromAddress -AuditId $AuditId -GeneratedOn $Now
+    $ApproveUrl = $null
+    $RejectUrl = $null
+    $ApprovalExpiresOn = $null
+    if ($Candidates.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($ApprovalBaseUrl) -and -not [string]::IsNullOrWhiteSpace($SigningSecret)) {
+        $ApprovalExpiresOn = $Now.AddHours($ApprovalTtlHours)
+        $BaseUrl = $ApprovalBaseUrl.TrimEnd('/')
+        $ApproveToken = New-AzSandboxApprovalToken -AuditId $AuditId -Action 'approve' -Candidate $Candidates -Secret $SigningSecret -TtlHours $ApprovalTtlHours -Now $Now
+        $RejectToken = New-AzSandboxApprovalToken -AuditId $AuditId -Action 'reject' -Candidate $Candidates -Secret $SigningSecret -TtlHours $ApprovalTtlHours -Now $Now
+        $ApproveUrl = "$BaseUrl/api/approve?token=$([uri]::EscapeDataString($ApproveToken))"
+        $RejectUrl = "$BaseUrl/api/approve?token=$([uri]::EscapeDataString($RejectToken))"
+    }
+
+    $Email = ConvertTo-AzSandboxApprovalEmail -Candidate $Candidates -ApproverEmail $ApproverEmail -FromAddress $FromAddress -AuditId $AuditId -GeneratedOn $Now -ApproveUrl $ApproveUrl -RejectUrl $RejectUrl
     $EmailPath = Join-Path $AuditPath "approval-$AuditId.html"
     Set-Content -LiteralPath $EmailPath -Value $Email.BodyHtml -Encoding utf8NoBOM
 
@@ -1117,7 +1421,7 @@ function Invoke-AzSandboxCleanupAudit {
         }
 
         if (-not [string]::IsNullOrWhiteSpace($TeamsWebhookUrl)) {
-            Send-AzSandboxTeamsMessage -WebhookUrl $TeamsWebhookUrl -Candidate $Candidates -AuditId $AuditId
+            Send-AzSandboxTeamsMessage -WebhookUrl $TeamsWebhookUrl -Candidate $Candidates -AuditId $AuditId -ApproveUrl $ApproveUrl -RejectUrl $RejectUrl
             if ($NotificationStatus -ne 'Sent') {
                 $NotificationStatus = 'TeamsOnly'
             }
@@ -1131,6 +1435,8 @@ function Invoke-AzSandboxCleanupAudit {
         GracePeriodHours   = $GracePeriodHours
         Simulation         = $true
         PendingApproval    = $Candidates.Count -gt 0
+        ApprovalRequested  = ($null -ne $ApproveUrl)
+        ApprovalExpiresOn  = $ApprovalExpiresOn
         NotificationStatus = $NotificationStatus
         NotificationPath   = $EmailPath
         Candidates         = $Candidates
@@ -1146,8 +1452,11 @@ Export-ModuleMember -Function @(
     'Connect-AzSandbox'
     'Export-AzSandboxDashboard'
     'Get-AzSandbox'
+    'Invoke-AzSandboxApprovedDeletion'
     'Invoke-AzSandboxCleanupAudit'
     'New-AzSandbox'
+    'New-AzSandboxApprovalToken'
     'Remove-AzExpiredSandbox'
     'Set-AzSandboxExpiration'
+    'Test-AzSandboxApprovalToken'
 )

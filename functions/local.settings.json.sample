@@ -1,0 +1,10 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "powershell",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_SANDBOX_SKIP_LOGIN": "true",
+    "SANDBOX_SIGNING_SECRET": "<replace-with-a-strong-shared-secret>",
+    "SANDBOX_TEAMS_WEBHOOK_URL": ""
+  }
+}

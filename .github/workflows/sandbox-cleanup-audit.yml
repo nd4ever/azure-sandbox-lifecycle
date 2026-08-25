@@ -29,6 +29,8 @@ jobs:
           SANDBOX_ACS_CONNECTION_STRING: ${{ secrets.SANDBOX_ACS_CONNECTION_STRING }}
           SANDBOX_ACS_SENDER: ${{ vars.SANDBOX_ACS_SENDER }}
           SANDBOX_TEAMS_WEBHOOK_URL: ${{ secrets.SANDBOX_TEAMS_WEBHOOK_URL }}
+          SANDBOX_APPROVAL_BASE_URL: ${{ vars.SANDBOX_APPROVAL_BASE_URL }}
+          SANDBOX_SIGNING_SECRET: ${{ secrets.SANDBOX_SIGNING_SECRET }}
           SANDBOX_SMTP_SERVER: ${{ vars.SANDBOX_SMTP_SERVER }}
           SANDBOX_SMTP_USERNAME: ${{ secrets.SANDBOX_SMTP_USERNAME }}
           SANDBOX_SMTP_PASSWORD: ${{ secrets.SANDBOX_SMTP_PASSWORD }}
@@ -60,6 +62,11 @@ jobs:
 
             if (-not [string]::IsNullOrWhiteSpace($env:SANDBOX_TEAMS_WEBHOOK_URL)) {
               $AuditParameters.TeamsWebhookUrl = $env:SANDBOX_TEAMS_WEBHOOK_URL
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($env:SANDBOX_APPROVAL_BASE_URL) -and -not [string]::IsNullOrWhiteSpace($env:SANDBOX_SIGNING_SECRET)) {
+              $AuditParameters.ApprovalBaseUrl = $env:SANDBOX_APPROVAL_BASE_URL
+              $AuditParameters.SigningSecret = $env:SANDBOX_SIGNING_SECRET
             }
 
             Invoke-AzSandboxCleanupAudit @AuditParameters | ConvertTo-Json -Depth 6
