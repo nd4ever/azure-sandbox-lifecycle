@@ -7,5 +7,9 @@ functions/local.settings.json
 functions/Modules/
 *.zip
 
+# Node dependencies (diagram generator installs these locally on demand)
+node_modules/
+package-lock.json
+
 # Compiled Bicep output
 infra/**/*.json
