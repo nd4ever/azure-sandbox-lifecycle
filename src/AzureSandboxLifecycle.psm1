@@ -1258,8 +1258,8 @@ function Send-AzSandboxTeamsMessage {
 
     if (-not [string]::IsNullOrWhiteSpace($ApproveUrl) -and -not [string]::IsNullOrWhiteSpace($RejectUrl)) {
         $CardContent['actions'] = @(
-            [ordered]@{ type = 'Action.OpenUrl'; title = 'Approve deletion'; url = $ApproveUrl }
-            [ordered]@{ type = 'Action.OpenUrl'; title = 'Reject'; url = $RejectUrl }
+            [ordered]@{ type = 'Action.OpenUrl'; title = 'Approve deletion'; style = 'positive'; url = $ApproveUrl }
+            [ordered]@{ type = 'Action.OpenUrl'; title = 'Reject'; style = 'destructive'; url = $RejectUrl }
         )
     }
 
