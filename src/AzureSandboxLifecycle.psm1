@@ -13,6 +13,12 @@ $script:MonthlyBudgetTag = 'sandbox-lifecycle_monthlyBudget'
 $script:OwnerTag = 'sandbox-lifecycle_owner'
 $script:StatusTag = 'sandbox-lifecycle_status'
 
+# Base64 PNG buttons for the Teams card (bright green #107c10 / red #a4262c to match the email).
+# Regenerate with scripts/New-TeamsButtonImages.ps1.
+$script:ApproveButtonPng = 'iVBORw0KGgoAAAANSUhEUgAAARgAAAA4CAYAAAAmVecOAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAATpSURBVHhe7ds9b9tGHMdxj9nuZCBAN/clZMzoF+ChY8aMHbOpEFUoW8dMQTdlzGKgLyFGlo4ZPUabBw8ZPbI4ihKP//vfA0mxruvvAZ8Mugc+5PjTkZTPzgrL+er8tanMpVmbt6Yy7wE8M/tr/9KR+TCquFCxv9tPtrI/7NrWANCo7IOt7GezNr/I3MiWl5uXP9nK/hUMCgChL2ZlXskcUUuzaqnsnTIIAOgq+7BYL97IPOkVd28VdASAQtGQMRvzMysXAJNU9kG9XeKZC4AT+dYLF26NAJySe6Xtr14+ywYAMMHfTbhcbC5eNO+0wwYAMJp7rrt/La1UAsAUzRsl90s8WQEAU5mVeXfm/pEVADCV+/sl9wbpvawAgKkIGACzIWAAzIaAATAbAgbAbAgYALMhYADMhoABMBsCBvP5uK139b7svl6F9VFX9fa+7Xi/ra+C+nGWt+2Yt8ugDvMgYIp5k/7EE/9/67ECpt3uzbX/+bK+Of7n3dRL2QezIGBKeRfLvuzq7UelHTqPETDXXoz0AoYVzGMgYApdfW0vlfvdyIvmGfqPBQz+fQRMEW/C3y67b8Jg8osLw5vsrvQn/Pi2y0PY+d/EwQrLr/dv7/q3B8dj8VdkwViFtxS9Y9jV2+tEwCS3kQiYRL/uWPplfy6HjClXOaKvaE+QxREwJbwJ5SbTcTUT3CaJ5zRK6SbjCdoeLgIRTr3SXkzdPvvjes8lsmPJY+3zx9dKL2Cy24iEQabfqICJjum3i5z/YykM4GeIgCnQTdx2IkWX/v2JeLyQ/W88dVUxsm3DCwnvwgkCRdtnEZz+WN1xddsOViGZffAv+K5vyTa0MCjpl7pFSo+ZPHe9898FrX98rGJ0BEyW8i2vTtahn2ufxT7XPmtFLyi53+EY3YXUBmfq29yV2MPR2D5ooVa0jXBfy/ol9iUz5tBzl94WDgiYnNzE7t06eBNRXIzBKmhs2+KACcfv39qF9dljldvO7cOYgGm2oRxvUb/EvmTGjLYlYCYhYDJi9/V+0Zbs41cl2ufaZ63oJJffwvKWqKs/9ouOlRHrlwmY+DaU4y3ql2o3ZEx57pS+yf44IGCS9Hv0PW/SaSsNf2XjTUQ1jIa0DfZD38fwOYLc5rHWe0Cpj+UsbxMPMv3nRlooRp7BxLehHW9Jv0ioDRwzPHdaXwKmBAGTol7sneREVEvkVaxaIm2DgMm8wRG3X0HbXP2xJAKmYKXnn7/8NvTjzfdzvNA41Mr/m6IxC565ETBZBExUZIXh8yaYtpQ+/l6lKfICHd9WBkxD+S2HFoqynXph+MfVFnUsoR8yN/UyuprIbSNxvMl+eptUwDSy5y7Sl4DJImBOKjIRVUPaAk8TAXNSQ0JjSFvgaSJgTmpIaAxpCzxNBMxJDQmNIW2Bp4mAATAbAgbAbAgYALMhYADMhoABMJsmYBbV4jdZAQBT7QNmvXgjKwBgKrd4cbdIl7ICAKYya/P2zGyMlRUAMJVZmVdnrti1/SIrAWCC7024uLJYLX5VGgDAWH8cA6ZdxXxTGgHAMJW9u9hcvOgFDA97AZxC83BXK2Zl3snGADDAB5krvcIP7wCM9KfME7U0t0uVvVMGAIC+yv5wL4pkjiSLe0jTrma+BwMCwH4R8sH9lk7mx6DifjDjwsb9bQEAnK/OX8uc0Mo/HPBwARKISt4AAAAASUVORK5CYII='
+$script:RejectButtonPng = 'iVBORw0KGgoAAAANSUhEUgAAARgAAAA4CAYAAAAmVecOAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAOUSURBVHhe7dsvTyNBGMfxSuTJcz3BTJPuNCCRvISTkCCQJ5EnSRAnkSebsEuQZ/CYJicRvACSGiRBIfcy29LdnT/LdLebo8P3ST6IzkyD2V+emdkOBoGV7k4O0lFymInJaSqScwCfS/Hsj5JDzcyHVqVD5VqqaSaT50yqHACWXjOpbq6k+m7mxrs1HY+/ZiL54/hSADDdZWK8b+aIs3TXkgn15PgSAPB5vRLJkZkntSrOWOyFABDEGzI3o71vdC4AOnp1bpc4cwGwCalU97VwYWsEYKPE5LTsXqS6sSYAQGvJ3yJcpsPhzvJO2zEJANrR57qLa2nHIAB0Udwo6TfxzAEA6CqVydlA/zEHAKAr/fulQfEjJscgAHRBwADoDQEDoDcEDIDeEDAAekPAAOgNAQOgNwQMgN4QMAgym+WLml1YY4APAROpVSA46iU7seY3u8jnq9WzfGaNd3R8nb/keT4/d4xhqxEwkWoKmKLW7ER662DOy3+UgIkPAROpMmAqHceyU7A+/58ImKgRMJFyBow8yR9Wex0jYGrhY45X1s2v89vgdW+qW6xF6W2ar8siaOJBwETKGTCVbqG21al+Xqt5/nCs53gC5t11/jkEzOdAwETK9/AWVetCyu6iPPwtA2XxmStgQtZVO5dK6MiL/OFtDVukqBEwkfIGjHlI6+kwVlXMdwRMyLqQ8AiZg61FwETK2iKtvT1aVhEoLQJGzwsJj5A52FoETKSsgDG6mtXDHPSANweMd92m5mBrETCRcgVM7cbHcZZi3hDNZm9rHQETtM73gl7lDKbyP63/AiA+OgImUs6AkSq/zcpH/u2Brn5Wr6aACVnnn1OGiX2FTScTDwImUr6A8d7sOM5UXLdDZrfSvG7JelfGCBHjOwiYeBAwCFAJGPMWCmhAwOB9nJOgJQIGftbWxtxuAc0IGPh9xB9HYqsQMAB6Q8AA6A0BA6A3BAyA3hAwAHqzCBipfpoDANBVETBXIjkyBwCgK928DNJRcmgOAEBnYnI6mA73vlgDANCVGO8PdGVS3VmDANCWUI9FuBQBs6t+WBMAoC2R/FoFjK5UqntrEgCsS6in6XC4Uw8YDnsBbII+3HVVKpMzazIAhBLq0syVWvHiHYA2Upn8NvPEWcV2Sagn8wsAwJY864siM0caSx/SFN2MUI/2FwL49HQTItSlfpfOzI+1Sr8wo8NG/7YAANLdyYGZE676BwgZ8xO+0yFmAAAAAElFTkSuQmCC'
+
+
 function Get-AzSandboxTagValue {
     <#
     .SYNOPSIS
@@ -1257,10 +1263,37 @@ function Send-AzSandboxTeamsMessage {
     }
 
     if (-not [string]::IsNullOrWhiteSpace($ApproveUrl) -and -not [string]::IsNullOrWhiteSpace($RejectUrl)) {
-        $CardContent['actions'] = @(
-            [ordered]@{ type = 'Action.OpenUrl'; title = 'Approve deletion'; style = 'positive'; url = $ApproveUrl }
-            [ordered]@{ type = 'Action.OpenUrl'; title = 'Reject'; style = 'destructive'; url = $RejectUrl }
-        )
+        # Bright green/red PNG buttons (data URIs) match the email; Teams action styles can't set custom hex.
+        $CardContent['body'] += [ordered]@{
+            type    = 'ColumnSet'
+            spacing = 'Medium'
+            columns = @(
+                [ordered]@{
+                    type  = 'Column'
+                    width = 'auto'
+                    items = @(
+                        [ordered]@{
+                            type         = 'Image'
+                            altText      = 'Approve deletion'
+                            url          = "data:image/png;base64,$script:ApproveButtonPng"
+                            selectAction = [ordered]@{ type = 'Action.OpenUrl'; title = 'Approve deletion'; url = $ApproveUrl }
+                        }
+                    )
+                }
+                [ordered]@{
+                    type  = 'Column'
+                    width = 'auto'
+                    items = @(
+                        [ordered]@{
+                            type         = 'Image'
+                            altText      = 'Reject'
+                            url          = "data:image/png;base64,$script:RejectButtonPng"
+                            selectAction = [ordered]@{ type = 'Action.OpenUrl'; title = 'Reject'; url = $RejectUrl }
+                        }
+                    )
+                }
+            )
+        }
     }
 
     $Card = [ordered]@{

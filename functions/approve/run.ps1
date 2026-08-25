@@ -86,13 +86,22 @@ if ($Request.Method -eq 'GET') {
         Write-SandboxHtml -StatusCode 200 -Html (Format-SandboxPage -Title 'Confirm rejection' -Heading 'Confirm sandbox deletion rejection' -BodyHtml $Body)
     }
     else {
+        # Mint a matching reject token so the confirmation page can offer a red failsafe.
+        $RejectCandidates = @($Payload.rgs | ForEach-Object {
+            [pscustomobject]@{ SubscriptionId = [string]$_.s; ResourceGroupName = [string]$_.n }
+        })
+        $RemainingHours = [int][math]::Ceiling(($Payload.exp - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) / 3600)
+        if ($RemainingHours -lt 1) { $RemainingHours = 1 } elseif ($RemainingHours -gt 168) { $RemainingHours = 168 }
+        $RejectToken = New-AzSandboxApprovalToken -AuditId ([string]$Payload.aid) -Action 'reject' -Candidate $RejectCandidates -Secret $Secret -TtlHours $RemainingHours
+        $RejectEncoded = & $Encode $RejectToken
         $Body = @"
 <p>You are about to <strong>permanently delete</strong> the following resource group(s) for audit <strong>$(& $Encode $Payload.aid)</strong>:</p>
 <ul>$RgListItems</ul>
 <p style="color:#a4262c;font-weight:600;">This action cannot be undone.</p>
-<form method="post" action="?token=$EncodedToken">
+<form method="post" action="?token=$EncodedToken" style="display:inline;">
   <button type="submit" style="background:#107c10;color:#fff;border:0;padding:10px 18px;border-radius:4px;font-weight:600;cursor:pointer;">Confirm deletion</button>
 </form>
+<a href="?token=$RejectEncoded" style="display:inline-block;background:#a4262c;color:#fff;padding:10px 18px;border-radius:4px;font-weight:600;text-decoration:none;margin-left:8px;">Reject instead</a>
 "@
         Write-SandboxHtml -StatusCode 200 -Html (Format-SandboxPage -Title 'Confirm deletion' -Heading 'Confirm sandbox deletion' -BodyHtml $Body)
     }
