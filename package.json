@@ -1,0 +1,8 @@
+{
+  "name": "azure-sandbox-lifecycle",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test:ps": "pwsh -NoProfile -File ./scripts/Invoke-Pester.ps1"
+  }
+}
