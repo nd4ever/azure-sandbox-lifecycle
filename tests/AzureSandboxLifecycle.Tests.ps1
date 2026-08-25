@@ -181,6 +181,8 @@ Describe 'Invoke-AzSandboxCleanupAudit' -Tag 'Unit' {
             )
         } -ModuleName AzureSandboxLifecycle
         Mock Send-MailMessage {} -ModuleName AzureSandboxLifecycle
+        Mock Send-AzSandboxAcsEmail { 'Succeeded' } -ModuleName AzureSandboxLifecycle
+        Mock Send-AzSandboxTeamsMessage {} -ModuleName AzureSandboxLifecycle
     }
 
     It 'Audits only expired candidates and simulates the approval email' {
@@ -205,6 +207,25 @@ Describe 'Invoke-AzSandboxCleanupAudit' -Tag 'Unit' {
         Should -Invoke Send-MailMessage -ModuleName AzureSandboxLifecycle -Times 1 -Exactly -ParameterFilter {
             $To -eq 'nd4ever@hotmail.com'
         }
+    }
+
+    It 'Sends through Azure Communication Services when a connection string is configured' {
+        $AuditDir = Join-Path $TestDrive 'audit-acs'
+        $Result = Invoke-AzSandboxCleanupAudit -GracePeriodHours 24 -AuditPath $AuditDir -AcsConnectionString 'endpoint=https://acs.communication.azure.com/;accesskey=Zm9v' -AcsSenderAddress 'donotreply@contoso.azurecomm.net'
+
+        $Result.NotificationStatus | Should -Be 'Sent'
+        Should -Invoke Send-AzSandboxAcsEmail -ModuleName AzureSandboxLifecycle -Times 1 -Exactly -ParameterFilter {
+            $ToAddress -eq 'nd4ever@hotmail.com' -and $SenderAddress -eq 'donotreply@contoso.azurecomm.net'
+        }
+        Should -Invoke Send-MailMessage -ModuleName AzureSandboxLifecycle -Times 0 -Exactly
+    }
+
+    It 'Posts to Teams when a webhook URL is configured' {
+        $AuditDir = Join-Path $TestDrive 'audit-teams'
+        $Result = Invoke-AzSandboxCleanupAudit -GracePeriodHours 24 -AuditPath $AuditDir -TeamsWebhookUrl 'https://example.webhook.office.com/webhookb2/abc'
+
+        $Result.NotificationStatus | Should -Be 'TeamsOnly'
+        Should -Invoke Send-AzSandboxTeamsMessage -ModuleName AzureSandboxLifecycle -Times 1 -Exactly
     }
 }
 

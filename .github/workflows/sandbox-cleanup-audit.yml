@@ -28,6 +28,9 @@ jobs:
         uses: azure/powershell@v2
         env:
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          SANDBOX_ACS_CONNECTION_STRING: ${{ secrets.SANDBOX_ACS_CONNECTION_STRING }}
+          SANDBOX_ACS_SENDER: ${{ vars.SANDBOX_ACS_SENDER }}
+          SANDBOX_TEAMS_WEBHOOK_URL: ${{ secrets.SANDBOX_TEAMS_WEBHOOK_URL }}
           SANDBOX_SMTP_SERVER: ${{ vars.SANDBOX_SMTP_SERVER }}
           SANDBOX_SMTP_USERNAME: ${{ secrets.SANDBOX_SMTP_USERNAME }}
           SANDBOX_SMTP_PASSWORD: ${{ secrets.SANDBOX_SMTP_PASSWORD }}
@@ -43,12 +46,22 @@ jobs:
               AuditPath        = './out/audit'
             }
 
-            if (-not [string]::IsNullOrWhiteSpace($env:SANDBOX_SMTP_SERVER)) {
+            if (-not [string]::IsNullOrWhiteSpace($env:SANDBOX_ACS_CONNECTION_STRING)) {
+              $AuditParameters.AcsConnectionString = $env:SANDBOX_ACS_CONNECTION_STRING
+              if (-not [string]::IsNullOrWhiteSpace($env:SANDBOX_ACS_SENDER)) {
+                $AuditParameters.AcsSenderAddress = $env:SANDBOX_ACS_SENDER
+              }
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($env:SANDBOX_SMTP_SERVER)) {
               $AuditParameters.SmtpServer = $env:SANDBOX_SMTP_SERVER
               if (-not [string]::IsNullOrWhiteSpace($env:SANDBOX_SMTP_USERNAME)) {
                 $SecurePassword = ConvertTo-SecureString $env:SANDBOX_SMTP_PASSWORD -AsPlainText -Force
                 $AuditParameters.SmtpCredential = [pscredential]::new($env:SANDBOX_SMTP_USERNAME, $SecurePassword)
               }
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($env:SANDBOX_TEAMS_WEBHOOK_URL)) {
+              $AuditParameters.TeamsWebhookUrl = $env:SANDBOX_TEAMS_WEBHOOK_URL
             }
 
             Invoke-AzSandboxCleanupAudit @AuditParameters | ConvertTo-Json -Depth 6

@@ -841,6 +841,159 @@ $Rows
     }
 }
 
+function Send-AzSandboxAcsEmail {
+    <#
+    .SYNOPSIS
+        Sends an email through Azure Communication Services using access-key authentication.
+    .PARAMETER ConnectionString
+        Communication Services connection string containing the endpoint and access key.
+    .PARAMETER SenderAddress
+        Verified Communication Services sender address.
+    .PARAMETER ToAddress
+        Recipient email address.
+    .PARAMETER Subject
+        Email subject line.
+    .PARAMETER HtmlBody
+        HTML email body.
+    .OUTPUTS
+        System.String
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ConnectionString,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$SenderAddress,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ToAddress,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Subject,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$HtmlBody
+    )
+
+    $Endpoint = $null
+    $AccessKey = $null
+    foreach ($Part in $ConnectionString -split ';') {
+        $Trimmed = $Part.Trim()
+        if ($Trimmed -imatch '^endpoint=(.+)$') { $Endpoint = $Matches[1].TrimEnd('/') }
+        elseif ($Trimmed -imatch '^accesskey=(.+)$') { $AccessKey = $Matches[1] }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Endpoint) -or [string]::IsNullOrWhiteSpace($AccessKey)) {
+        throw 'The Communication Services connection string must include endpoint and accesskey values.'
+    }
+
+    $PathAndQuery = '/emails:send?api-version=2023-03-31'
+    $HostName = ([Uri]$Endpoint).Host
+
+    $Payload = [ordered]@{
+        senderAddress = $SenderAddress
+        content       = [ordered]@{ subject = $Subject; html = $HtmlBody }
+        recipients    = [ordered]@{ to = @([ordered]@{ address = $ToAddress }) }
+    } | ConvertTo-Json -Depth 6
+    $BodyBytes = [Text.Encoding]::UTF8.GetBytes($Payload)
+
+    $Sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $ContentHash = [Convert]::ToBase64String($Sha.ComputeHash($BodyBytes))
+    }
+    finally {
+        $Sha.Dispose()
+    }
+
+    $Date = [DateTime]::UtcNow.ToString('R', [System.Globalization.CultureInfo]::InvariantCulture)
+    $StringToSign = "POST`n$PathAndQuery`n$Date;$HostName;$ContentHash"
+
+    $Hmac = [System.Security.Cryptography.HMACSHA256]::new([Convert]::FromBase64String($AccessKey))
+    try {
+        $Signature = [Convert]::ToBase64String($Hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($StringToSign)))
+    }
+    finally {
+        $Hmac.Dispose()
+    }
+
+    $Headers = @{
+        'x-ms-date'           = $Date
+        'x-ms-content-sha256' = $ContentHash
+        'Authorization'       = "HMAC-SHA256 SignedHeaders=x-ms-date;host;x-ms-content-sha256&Signature=$Signature"
+    }
+
+    $Response = Invoke-WebRequest -Uri "$Endpoint$PathAndQuery" -Method Post -Headers $Headers -Body $BodyBytes -ContentType 'application/json' -ErrorAction Stop
+    $OperationStatus = if ($Response.Content) { ($Response.Content | ConvertFrom-Json).status } else { $null }
+    if ([string]::IsNullOrWhiteSpace($OperationStatus)) {
+        return 'Accepted'
+    }
+
+    return [string]$OperationStatus
+}
+
+function Send-AzSandboxTeamsMessage {
+    <#
+    .SYNOPSIS
+        Posts a sandbox deletion approval card to a Microsoft Teams webhook.
+    .PARAMETER WebhookUrl
+        Teams incoming webhook or Workflows URL.
+    .PARAMETER Candidate
+        Sandbox records proposed for deletion.
+    .PARAMETER AuditId
+        Audit correlation identifier.
+    .OUTPUTS
+        None
+    #>
+    [CmdletBinding()]
+    [OutputType([void])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$WebhookUrl,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [object[]]$Candidate,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$AuditId
+    )
+
+    $Facts = @($Candidate | ForEach-Object {
+        $ExpiresLabel = if ($null -eq $_.ExpiresOn) { 'Invalid tag' } else { $_.ExpiresOn.ToString('u') }
+        [ordered]@{ title = [string]$_.Name; value = "$([string]$_.Owner) - expired $ExpiresLabel" }
+    })
+
+    $Card = [ordered]@{
+        type        = 'message'
+        attachments = @(
+            [ordered]@{
+                contentType = 'application/vnd.microsoft.card.adaptive'
+                content     = [ordered]@{
+                    '$schema' = 'http://adaptivecards.io/schemas/adaptive-card.json'
+                    type      = 'AdaptiveCard'
+                    version   = '1.4'
+                    body      = @(
+                        [ordered]@{ type = 'TextBlock'; size = 'Large'; weight = 'Bolder'; text = 'Azure sandbox deletion approval' }
+                        [ordered]@{ type = 'TextBlock'; wrap = $true; text = "Audit $AuditId - $($Candidate.Count) sandbox(es) pending deletion." }
+                        [ordered]@{ type = 'FactSet'; facts = $Facts }
+                    )
+                }
+            }
+        )
+    } | ConvertTo-Json -Depth 20
+
+    Invoke-RestMethod -Uri $WebhookUrl -Method Post -Body $Card -ContentType 'application/json' -ErrorAction Stop | Out-Null
+}
+
 function Invoke-AzSandboxCleanupAudit {
     <#
     .SYNOPSIS
@@ -848,7 +1001,9 @@ function Invoke-AzSandboxCleanupAudit {
     .DESCRIPTION
         Identifies expired sandboxes past the grace period without deleting them,
         writes an audit record and approval email to disk, and notifies the approver.
-        The email is simulated unless SMTP settings are supplied.
+        Sends through Azure Communication Services when a connection string is supplied,
+        falls back to SMTP when an SMTP server is supplied, and otherwise simulates the
+        email. A Teams webhook URL additionally posts an approval card.
     .PARAMETER SubscriptionId
         Azure subscription IDs to inspect. Defaults to the active Azure context.
     .PARAMETER GracePeriodHours
@@ -859,6 +1014,12 @@ function Invoke-AzSandboxCleanupAudit {
         Sender address for the approval email.
     .PARAMETER AuditPath
         Directory that receives the audit record and approval email.
+    .PARAMETER AcsConnectionString
+        Azure Communication Services connection string used to send the approval email.
+    .PARAMETER AcsSenderAddress
+        Communication Services sender address. Defaults to FromAddress.
+    .PARAMETER TeamsWebhookUrl
+        Microsoft Teams webhook URL that receives an approval card.
     .PARAMETER SmtpServer
         SMTP host used to send the approval email. When omitted, the email is simulated.
     .PARAMETER SmtpPort
@@ -866,7 +1027,7 @@ function Invoke-AzSandboxCleanupAudit {
     .PARAMETER SmtpCredential
         Optional credential for authenticated SMTP delivery.
     .EXAMPLE
-        Invoke-AzSandboxCleanupAudit -GracePeriodHours 24
+        Invoke-AzSandboxCleanupAudit -GracePeriodHours 24 -AcsConnectionString $env:ACS_CONNECTION_STRING -AcsSenderAddress 'donotreply@contoso.azurecomm.net'
     .OUTPUTS
         System.Management.Automation.PSCustomObject
     #>
@@ -891,6 +1052,15 @@ function Invoke-AzSandboxCleanupAudit {
         [Parameter(Mandatory = $false)]
         [ValidateNotNullOrEmpty()]
         [string]$AuditPath = (Join-Path (Get-Location) 'out/audit'),
+
+        [Parameter(Mandatory = $false)]
+        [string]$AcsConnectionString,
+
+        [Parameter(Mandatory = $false)]
+        [string]$AcsSenderAddress,
+
+        [Parameter(Mandatory = $false)]
+        [string]$TeamsWebhookUrl,
 
         [Parameter(Mandatory = $false)]
         [string]$SmtpServer,
@@ -918,26 +1088,40 @@ function Invoke-AzSandboxCleanupAudit {
     Set-Content -LiteralPath $EmailPath -Value $Email.BodyHtml -Encoding utf8NoBOM
 
     $NotificationStatus = 'Simulated'
-    if (-not [string]::IsNullOrWhiteSpace($SmtpServer) -and $Candidates.Count -gt 0) {
-        $MailParameters = @{
-            To            = $ApproverEmail
-            From          = $FromAddress
-            Subject       = $Email.Subject
-            Body          = $Email.BodyHtml
-            BodyAsHtml    = $true
-            SmtpServer    = $SmtpServer
-            Port          = $SmtpPort
-            UseSsl        = $true
-            WarningAction = 'SilentlyContinue'
-            ErrorAction   = 'Stop'
+    if ($Candidates.Count -gt 0) {
+        if (-not [string]::IsNullOrWhiteSpace($AcsConnectionString)) {
+            $EffectiveSender = if ([string]::IsNullOrWhiteSpace($AcsSenderAddress)) { $FromAddress } else { $AcsSenderAddress }
+            Send-AzSandboxAcsEmail -ConnectionString $AcsConnectionString -SenderAddress $EffectiveSender -ToAddress $ApproverEmail -Subject $Email.Subject -HtmlBody $Email.BodyHtml | Out-Null
+            $NotificationStatus = 'Sent'
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($SmtpServer)) {
+            $MailParameters = @{
+                To            = $ApproverEmail
+                From          = $FromAddress
+                Subject       = $Email.Subject
+                Body          = $Email.BodyHtml
+                BodyAsHtml    = $true
+                SmtpServer    = $SmtpServer
+                Port          = $SmtpPort
+                UseSsl        = $true
+                WarningAction = 'SilentlyContinue'
+                ErrorAction   = 'Stop'
+            }
+
+            if ($null -ne $SmtpCredential) {
+                $MailParameters['Credential'] = $SmtpCredential
+            }
+
+            Send-MailMessage @MailParameters
+            $NotificationStatus = 'Sent'
         }
 
-        if ($null -ne $SmtpCredential) {
-            $MailParameters['Credential'] = $SmtpCredential
+        if (-not [string]::IsNullOrWhiteSpace($TeamsWebhookUrl)) {
+            Send-AzSandboxTeamsMessage -WebhookUrl $TeamsWebhookUrl -Candidate $Candidates -AuditId $AuditId
+            if ($NotificationStatus -ne 'Sent') {
+                $NotificationStatus = 'TeamsOnly'
+            }
         }
-
-        Send-MailMessage @MailParameters
-        $NotificationStatus = 'Sent'
     }
 
     $Audit = [pscustomobject]@{

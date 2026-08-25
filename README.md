@@ -129,7 +129,7 @@ Preview the audit and generate the approval email locally without deleting:
 Invoke-AzSandboxCleanupAudit -GracePeriodHours 24 -AuditPath ./out/audit
 ```
 
-The email is simulated to disk unless you supply SMTP settings. Approved
+The email is simulated to disk unless you supply a delivery channel. Approved
 deletions authenticate with a user-assigned managed identity:
 
 ```powershell
@@ -139,13 +139,46 @@ Remove-AzExpiredSandbox `
   -Confirm:$false
 ```
 
+### Notifications with Azure Communication Services
+
+Azure Communication Services Email is the recommended Azure-native delivery
+channel. Provision it once with the Azure CLI (a free Azure-managed domain needs
+no DNS setup):
+
+```bash
+az extension add --name communication
+az group create --name rg-sbx-notifications --location centralus
+az communication email create --name acs-email-sbx --resource-group rg-sbx-notifications --location Global --data-location UnitedStates
+az communication email domain create --domain-name AzureManagedDomain --email-service-name acs-email-sbx --resource-group rg-sbx-notifications --location Global --domain-management AzureManaged
+az communication create --name acs-sbx --resource-group rg-sbx-notifications --location Global --data-location UnitedStates --linked-domains "$(az communication email domain list --email-service-name acs-email-sbx --resource-group rg-sbx-notifications --query '[0].id' -o tsv)"
+```
+
+Send the approval email through Communication Services, and optionally post an
+approval card to a Microsoft Teams channel webhook:
+
+```powershell
+$acs = az communication list-key --name acs-sbx --resource-group rg-sbx-notifications --query primaryConnectionString -o tsv
+Invoke-AzSandboxCleanupAudit `
+  -GracePeriodHours 24 `
+  -AcsConnectionString $acs `
+  -AcsSenderAddress 'donotreply@<managed-domain>.azurecomm.net' `
+  -TeamsWebhookUrl '<teams-webhook-url>'
+```
+
+The audit prefers Communication Services when a connection string is present,
+falls back to SMTP when an SMTP server is supplied, and otherwise writes the
+email to disk. A Teams webhook URL is optional and posts an adaptive card in
+addition to the email.
+
 The audit workflow gates its delete job behind the `sandbox-deletion-approval`
 GitHub environment, which emails the required reviewers when it pauses. The
 delete job runs on a self-hosted runner labeled `azure` because a user-assigned
 managed identity is only available on Azure-hosted compute. In addition to the
-variables above, configure `AZURE_DELETE_IDENTITY_CLIENT_ID` and, for real email
-delivery, `SANDBOX_SMTP_SERVER` with the `SANDBOX_SMTP_USERNAME` and
-`SANDBOX_SMTP_PASSWORD` secrets. See the skill at
+variables above, configure `AZURE_DELETE_IDENTITY_CLIENT_ID`. For real email
+delivery, add the `SANDBOX_ACS_CONNECTION_STRING` secret and the
+`SANDBOX_ACS_SENDER` variable (or the `SANDBOX_SMTP_SERVER` variable with
+`SANDBOX_SMTP_USERNAME` and `SANDBOX_SMTP_PASSWORD` secrets). For Teams, add the
+`SANDBOX_TEAMS_WEBHOOK_URL` secret. See the skill at
 `.github/skills/sandbox-cleanup-audit/SKILL.md` for details.
 
 ## Lifecycle metadata
