@@ -103,6 +103,7 @@ Describe 'Remove-AzExpiredSandbox' -Tag 'Unit' {
         Mock Get-AzContext {
             [pscustomobject]@{ Subscription = [pscustomobject]@{ Id = 'sub-one' } }
         } -ModuleName AzureSandboxLifecycle
+        Mock Connect-AzAccount {} -ModuleName AzureSandboxLifecycle
         Mock Remove-AzResourceGroup {} -ModuleName AzureSandboxLifecycle
     }
 
@@ -111,6 +112,14 @@ Describe 'Remove-AzExpiredSandbox' -Tag 'Unit' {
 
         Should -Invoke Remove-AzResourceGroup -ModuleName AzureSandboxLifecycle -Times 1 -Exactly -ParameterFilter {
             $Name -eq 'expired'
+        }
+    }
+
+    It 'Authenticates with the user-assigned managed identity when requested' {
+        Remove-AzExpiredSandbox -GracePeriodHours 24 -ManagedIdentityClientId '00000000-0000-0000-0000-000000000009' -Confirm:$false
+
+        Should -Invoke Connect-AzAccount -ModuleName AzureSandboxLifecycle -Times 1 -Exactly -ParameterFilter {
+            $Identity -eq $true -and $AccountId -eq '00000000-0000-0000-0000-000000000009'
         }
     }
 }
@@ -137,6 +146,65 @@ Describe 'Export-AzSandboxDashboard' -Tag 'Unit' {
         $Html | Should -Match 'Azure sandbox inventory'
         $Html | Should -Match 'scoutTheme'
         $Html | Should -Match '--cp-accent'
+    }
+}
+
+Describe 'Connect-AzSandbox' -Tag 'Unit' {
+    BeforeEach {
+        Mock Get-AzContext {
+            [pscustomobject]@{ Subscription = [pscustomobject]@{ Id = 'sub-one' } }
+        } -ModuleName AzureSandboxLifecycle
+        Mock Connect-AzAccount {} -ModuleName AzureSandboxLifecycle
+    }
+
+    It 'Connects with a user-assigned managed identity client ID' {
+        Connect-AzSandbox -ManagedIdentityClientId '00000000-0000-0000-0000-000000000009'
+
+        Should -Invoke Connect-AzAccount -ModuleName AzureSandboxLifecycle -Times 1 -Exactly -ParameterFilter {
+            $Identity -eq $true -and $AccountId -eq '00000000-0000-0000-0000-000000000009'
+        }
+    }
+
+    It 'Reuses the current context when no client ID is supplied' {
+        Connect-AzSandbox
+
+        Should -Invoke Connect-AzAccount -ModuleName AzureSandboxLifecycle -Times 0 -Exactly
+    }
+}
+
+Describe 'Invoke-AzSandboxCleanupAudit' -Tag 'Unit' {
+    BeforeEach {
+        Mock Get-AzSandbox {
+            @(
+                [pscustomobject]@{ Name = 'expired'; ResourceGroupName = 'expired'; SubscriptionId = 'sub-one'; Owner = 'owner@contoso.com'; ExpiresOn = [DateTimeOffset]::UtcNow.AddDays(-3) }
+                [pscustomobject]@{ Name = 'active'; ResourceGroupName = 'active'; SubscriptionId = 'sub-one'; Owner = 'owner@contoso.com'; ExpiresOn = [DateTimeOffset]::UtcNow.AddDays(3) }
+            )
+        } -ModuleName AzureSandboxLifecycle
+        Mock Send-MailMessage {} -ModuleName AzureSandboxLifecycle
+    }
+
+    It 'Audits only expired candidates and simulates the approval email' {
+        $AuditDir = Join-Path $TestDrive 'audit'
+        $Result = Invoke-AzSandboxCleanupAudit -GracePeriodHours 24 -AuditPath $AuditDir
+
+        @($Result.Candidates) | Should -HaveCount 1
+        $Result.Candidates[0].Name | Should -Be 'expired'
+        $Result.PendingApproval | Should -BeTrue
+        $Result.Approver | Should -Be 'nd4ever@hotmail.com'
+        $Result.NotificationStatus | Should -Be 'Simulated'
+        Test-Path -LiteralPath $Result.NotificationPath | Should -BeTrue
+        Test-Path -LiteralPath $Result.AuditRecordPath | Should -BeTrue
+        Should -Invoke Send-MailMessage -ModuleName AzureSandboxLifecycle -Times 0 -Exactly
+    }
+
+    It 'Sends the approval email when an SMTP server is configured' {
+        $AuditDir = Join-Path $TestDrive 'audit-smtp'
+        $Result = Invoke-AzSandboxCleanupAudit -GracePeriodHours 24 -AuditPath $AuditDir -SmtpServer 'smtp.contoso.com'
+
+        $Result.NotificationStatus | Should -Be 'Sent'
+        Should -Invoke Send-MailMessage -ModuleName AzureSandboxLifecycle -Times 1 -Exactly -ParameterFilter {
+            $To -eq 'nd4ever@hotmail.com'
+        }
     }
 }
 

@@ -16,8 +16,10 @@
         'Az.Resources'
     )
     FunctionsToExport = @(
+        'Connect-AzSandbox'
         'Export-AzSandboxDashboard'
         'Get-AzSandbox'
+        'Invoke-AzSandboxCleanupAudit'
         'New-AzSandbox'
         'Remove-AzExpiredSandbox'
         'Set-AzSandboxExpiration'

@@ -80,6 +80,51 @@ function Select-AzSandboxSubscriptionContext {
     return $Context
 }
 
+function Connect-AzSandbox {
+    <#
+    .SYNOPSIS
+        Establishes an Azure session for sandbox lifecycle operations.
+    .DESCRIPTION
+        Authenticates with a user-assigned managed identity when a client ID is
+        provided, which is the supported identity for automated resource deletion.
+        Without a client ID, the current Azure context is reused.
+    .PARAMETER ManagedIdentityClientId
+        Client ID of the user-assigned managed identity used for authentication.
+    .PARAMETER SubscriptionId
+        Azure subscription ID to select after authentication.
+    .EXAMPLE
+        Connect-AzSandbox -ManagedIdentityClientId '00000000-0000-0000-0000-000000000000'
+    .OUTPUTS
+        System.Object
+    #>
+    [CmdletBinding()]
+    [OutputType([object])]
+    param(
+        [Parameter(Mandatory = $false)]
+        [ValidatePattern('^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')]
+        [string]$ManagedIdentityClientId,
+
+        [Parameter(Mandatory = $false)]
+        [string]$SubscriptionId
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ManagedIdentityClientId)) {
+        $ConnectParameters = @{
+            Identity    = $true
+            AccountId   = $ManagedIdentityClientId
+            ErrorAction = 'Stop'
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($SubscriptionId)) {
+            $ConnectParameters['Subscription'] = $SubscriptionId
+        }
+
+        Connect-AzAccount @ConnectParameters | Out-Null
+    }
+
+    return Select-AzSandboxSubscriptionContext -SubscriptionId $SubscriptionId
+}
+
 function Get-AzSandboxStatus {
     <#
     .SYNOPSIS
@@ -414,6 +459,8 @@ function Remove-AzExpiredSandbox {
         Azure subscription IDs to inspect. Defaults to the active Azure context.
     .PARAMETER GracePeriodHours
         Number of hours to wait after expiration before deletion is allowed.
+    .PARAMETER ManagedIdentityClientId
+        Client ID of the user-assigned managed identity used to authenticate deletion.
     .PARAMETER PassThru
         Returns a deletion record for each removed sandbox.
     .EXAMPLE
@@ -432,8 +479,16 @@ function Remove-AzExpiredSandbox {
         [int]$GracePeriodHours = 24,
 
         [Parameter(Mandatory = $false)]
+        [ValidatePattern('^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')]
+        [string]$ManagedIdentityClientId,
+
+        [Parameter(Mandatory = $false)]
         [switch]$PassThru
     )
+
+    if (-not [string]::IsNullOrWhiteSpace($ManagedIdentityClientId)) {
+        Connect-AzSandbox -ManagedIdentityClientId $ManagedIdentityClientId | Out-Null
+    }
 
     $DeletionCutoff = [DateTimeOffset]::UtcNow.AddHours(-$GracePeriodHours)
     $ExpiredSandboxes = Get-AzSandbox -SubscriptionId $SubscriptionId | Where-Object {
@@ -699,9 +754,215 @@ function Export-AzSandboxDashboard {
     return Get-Item -LiteralPath $Path
 }
 
+function ConvertTo-AzSandboxApprovalEmail {
+    <#
+    .SYNOPSIS
+        Builds the approval email for a sandbox deletion audit.
+    .PARAMETER Candidate
+        Sandbox records proposed for deletion.
+    .PARAMETER ApproverEmail
+        Approver notification address.
+    .PARAMETER FromAddress
+        Sender address.
+    .PARAMETER AuditId
+        Audit correlation identifier.
+    .PARAMETER GeneratedOn
+        Audit timestamp.
+    .OUTPUTS
+        System.Collections.Hashtable
+    #>
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [object[]]$Candidate,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ApproverEmail,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$FromAddress,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$AuditId,
+
+        [Parameter(Mandatory = $false)]
+        [DateTimeOffset]$GeneratedOn = [DateTimeOffset]::UtcNow
+    )
+
+    $Escape = {
+        param($Value)
+        [string]$Value -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;'
+    }
+
+    $Rows = if ($Candidate.Count -eq 0) {
+        '<tr><td colspan="4">No sandboxes require deletion.</td></tr>'
+    }
+    else {
+        ($Candidate | ForEach-Object {
+            $ExpiresLabel = if ($null -eq $_.ExpiresOn) { 'Invalid tag' } else { $_.ExpiresOn.ToString('u') }
+            '<tr><td>{0}</td><td>{1}</td><td>{2}</td><td>{3}</td></tr>' -f @(
+                (& $Escape $_.Name),
+                (& $Escape $_.Owner),
+                (& $Escape $_.SubscriptionId),
+                (& $Escape $ExpiresLabel)
+            )
+        }) -join "`n"
+    }
+
+    $Subject = "[Approval required] $($Candidate.Count) Azure sandbox(es) pending deletion"
+    $BodyHtml = @"
+<!doctype html>
+<html lang="en">
+<body style="font-family: 'Segoe UI', Aptos, sans-serif; color: #242424;">
+  <h2>Azure sandbox deletion approval</h2>
+  <p>Audit <strong>$AuditId</strong> generated $($GeneratedOn.ToString('u')).</p>
+  <p>The following expired sandboxes are queued for deletion. Approve or reject before automated cleanup proceeds.</p>
+  <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse;">
+    <thead><tr><th>Sandbox</th><th>Owner</th><th>Subscription</th><th>Expired (UTC)</th></tr></thead>
+    <tbody>
+$Rows
+    </tbody>
+  </table>
+  <p>Approver: $ApproverEmail</p>
+</body>
+</html>
+"@
+
+    return @{
+        To       = $ApproverEmail
+        From     = $FromAddress
+        Subject  = $Subject
+        BodyHtml = $BodyHtml
+    }
+}
+
+function Invoke-AzSandboxCleanupAudit {
+    <#
+    .SYNOPSIS
+        Simulates expired-sandbox cleanup and requests deletion approval.
+    .DESCRIPTION
+        Identifies expired sandboxes past the grace period without deleting them,
+        writes an audit record and approval email to disk, and notifies the approver.
+        The email is simulated unless SMTP settings are supplied.
+    .PARAMETER SubscriptionId
+        Azure subscription IDs to inspect. Defaults to the active Azure context.
+    .PARAMETER GracePeriodHours
+        Number of hours after expiration before a sandbox becomes a deletion candidate.
+    .PARAMETER ApproverEmail
+        Address that receives the deletion approval request.
+    .PARAMETER FromAddress
+        Sender address for the approval email.
+    .PARAMETER AuditPath
+        Directory that receives the audit record and approval email.
+    .PARAMETER SmtpServer
+        SMTP host used to send the approval email. When omitted, the email is simulated.
+    .PARAMETER SmtpPort
+        SMTP port used to send the approval email.
+    .PARAMETER SmtpCredential
+        Optional credential for authenticated SMTP delivery.
+    .EXAMPLE
+        Invoke-AzSandboxCleanupAudit -GracePeriodHours 24
+    .OUTPUTS
+        System.Management.Automation.PSCustomObject
+    #>
+    [CmdletBinding()]
+    [OutputType([pscustomobject])]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string[]]$SubscriptionId = @(),
+
+        [Parameter(Mandatory = $false)]
+        [ValidateRange(0, 720)]
+        [int]$GracePeriodHours = 24,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ApproverEmail = 'nd4ever@hotmail.com',
+
+        [Parameter(Mandatory = $false)]
+        [ValidateNotNullOrEmpty()]
+        [string]$FromAddress = 'sandbox-lifecycle@no-reply.local',
+
+        [Parameter(Mandatory = $false)]
+        [ValidateNotNullOrEmpty()]
+        [string]$AuditPath = (Join-Path (Get-Location) 'out/audit'),
+
+        [Parameter(Mandatory = $false)]
+        [string]$SmtpServer,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateRange(1, 65535)]
+        [int]$SmtpPort = 587,
+
+        [Parameter(Mandatory = $false)]
+        [pscredential]$SmtpCredential
+    )
+
+    $Now = [DateTimeOffset]::UtcNow
+    $AuditId = [guid]::NewGuid().ToString()
+    $DeletionCutoff = $Now.AddHours(-$GracePeriodHours)
+
+    $Candidates = @(Get-AzSandbox -SubscriptionId $SubscriptionId | Where-Object {
+        $null -ne $_.ExpiresOn -and $_.ExpiresOn -le $DeletionCutoff
+    })
+
+    New-Item -ItemType Directory -Path $AuditPath -Force | Out-Null
+
+    $Email = ConvertTo-AzSandboxApprovalEmail -Candidate $Candidates -ApproverEmail $ApproverEmail -FromAddress $FromAddress -AuditId $AuditId -GeneratedOn $Now
+    $EmailPath = Join-Path $AuditPath "approval-$AuditId.html"
+    Set-Content -LiteralPath $EmailPath -Value $Email.BodyHtml -Encoding utf8NoBOM
+
+    $NotificationStatus = 'Simulated'
+    if (-not [string]::IsNullOrWhiteSpace($SmtpServer) -and $Candidates.Count -gt 0) {
+        $MailParameters = @{
+            To            = $ApproverEmail
+            From          = $FromAddress
+            Subject       = $Email.Subject
+            Body          = $Email.BodyHtml
+            BodyAsHtml    = $true
+            SmtpServer    = $SmtpServer
+            Port          = $SmtpPort
+            UseSsl        = $true
+            WarningAction = 'SilentlyContinue'
+            ErrorAction   = 'Stop'
+        }
+
+        if ($null -ne $SmtpCredential) {
+            $MailParameters['Credential'] = $SmtpCredential
+        }
+
+        Send-MailMessage @MailParameters
+        $NotificationStatus = 'Sent'
+    }
+
+    $Audit = [pscustomobject]@{
+        AuditId            = $AuditId
+        GeneratedOn        = $Now
+        Approver           = $ApproverEmail
+        GracePeriodHours   = $GracePeriodHours
+        Simulation         = $true
+        PendingApproval    = $Candidates.Count -gt 0
+        NotificationStatus = $NotificationStatus
+        NotificationPath   = $EmailPath
+        Candidates         = $Candidates
+    }
+
+    $AuditRecordPath = Join-Path $AuditPath "audit-$AuditId.json"
+    $Audit | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $AuditRecordPath -Encoding utf8NoBOM
+
+    return ($Audit | Add-Member -NotePropertyName 'AuditRecordPath' -NotePropertyValue $AuditRecordPath -PassThru)
+}
+
 Export-ModuleMember -Function @(
+    'Connect-AzSandbox'
     'Export-AzSandboxDashboard'
     'Get-AzSandbox'
+    'Invoke-AzSandboxCleanupAudit'
     'New-AzSandbox'
     'Remove-AzExpiredSandbox'
     'Set-AzSandboxExpiration'

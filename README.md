@@ -21,6 +21,7 @@ self-contained HTML dashboard.
 * Delete expired sandboxes after a configurable grace period
 * Export a searchable, filterable inventory dashboard with CSV download
 * Run hourly cleanup through GitHub Actions and workload identity federation
+* Simulate deletion, email an approver, and delete with a managed identity
 
 ## Prerequisites
 
@@ -114,6 +115,38 @@ repository variables:
 
 Manual workflow runs default to What-If mode. Scheduled runs perform cleanup.
 No client secret is required or stored.
+
+## Audited cleanup with approval
+
+The `sandbox-cleanup-audit` skill adds an approval gate in front of deletion. The
+workflow in `.github/workflows/sandbox-cleanup-audit.yml` runs a simulation that
+lists expired sandboxes, writes an audit record, and emails an approver before
+any resource is removed.
+
+Preview the audit and generate the approval email locally without deleting:
+
+```powershell
+Invoke-AzSandboxCleanupAudit -GracePeriodHours 24 -AuditPath ./out/audit
+```
+
+The email is simulated to disk unless you supply SMTP settings. Approved
+deletions authenticate with a user-assigned managed identity:
+
+```powershell
+Remove-AzExpiredSandbox `
+  -GracePeriodHours 24 `
+  -ManagedIdentityClientId '<managed-identity-client-id>' `
+  -Confirm:$false
+```
+
+The audit workflow gates its delete job behind the `sandbox-deletion-approval`
+GitHub environment, which emails the required reviewers when it pauses. The
+delete job runs on a self-hosted runner labeled `azure` because a user-assigned
+managed identity is only available on Azure-hosted compute. In addition to the
+variables above, configure `AZURE_DELETE_IDENTITY_CLIENT_ID` and, for real email
+delivery, `SANDBOX_SMTP_SERVER` with the `SANDBOX_SMTP_USERNAME` and
+`SANDBOX_SMTP_PASSWORD` secrets. See the skill at
+`.github/skills/sandbox-cleanup-audit/SKILL.md` for details.
 
 ## Lifecycle metadata
 
