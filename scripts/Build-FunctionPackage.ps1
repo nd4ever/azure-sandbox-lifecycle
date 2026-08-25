@@ -11,6 +11,9 @@
     truth by copying src/ into Modules/AzureSandboxLifecycle.
 .PARAMETER OutputPath
     Directory that receives the staging folder and zip. Defaults to out/functions.
+.PARAMETER SkipAzModules
+    Skips bundling the Az modules. The Flex Consumption plan does not support
+    managed dependencies, so the Az modules must ship in the package.
 .EXAMPLE
     ./scripts/Build-FunctionPackage.ps1
 .OUTPUTS
@@ -20,7 +23,10 @@
 [OutputType([string])]
 param(
     [Parameter(Mandatory = $false)]
-    [string]$OutputPath = (Join-Path (Get-Location) 'out/functions')
+    [string]$OutputPath = (Join-Path (Get-Location) 'out/functions'),
+
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipAzModules
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,6 +45,12 @@ Copy-Item -Path (Join-Path $FunctionsSource '*') -Destination $StagePath -Recurs
 $ModuleTarget = Join-Path $StagePath 'Modules/AzureSandboxLifecycle'
 New-Item -ItemType Directory -Path $ModuleTarget -Force | Out-Null
 Copy-Item -Path (Join-Path $ModuleSource 'AzureSandboxLifecycle.ps*1') -Destination $ModuleTarget -Force
+
+if (-not $SkipAzModules) {
+    $ModulesRoot = Join-Path $StagePath 'Modules'
+    Write-Information 'Bundling Az modules (Flex Consumption has no managed dependencies)...' -InformationAction Continue
+    Save-Module -Name 'Az.Accounts', 'Az.Resources', 'Az.ResourceGraph' -Path $ModulesRoot -Repository PSGallery -Force
+}
 
 $ZipPath = Join-Path $OutputPath 'approval-functions.zip'
 if (Test-Path -LiteralPath $ZipPath) {

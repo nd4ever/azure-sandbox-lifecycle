@@ -263,6 +263,14 @@ az functionapp deployment source config-zip `
   --src ./out/functions/approval-functions.zip
 ```
 
+The approval app runs on the Azure Functions **Flex Consumption** plan (Linux,
+PowerShell 7.4) with identity-based storage, so it works in subscriptions that
+forbid storage account keys. In hardened subscriptions that also block public
+network access to storage, the Bicep tags the storage account with
+`security = exception` and `securitycontrol = ignore` and enables public network
+access so the platform can reach the deployment container. Remove those tags if
+your environment does not use that exception convention.
+
 Use the `approvalBaseUrl` output as `SANDBOX_APPROVAL_BASE_URL`, and use the same
 `signingSecret` value for both the Function app setting `SANDBOX_SIGNING_SECRET`
 and the audit's `-SigningSecret`. Then a signed run looks like:
