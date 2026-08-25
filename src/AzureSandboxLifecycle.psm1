@@ -1325,7 +1325,7 @@ function Invoke-AzSandboxCleanupAudit {
 
         [Parameter(Mandatory = $false)]
         [ValidateNotNullOrEmpty()]
-        [string]$ApproverEmail = 'nd4ever@hotmail.com',
+        [string]$ApproverEmail = 'approver@example.com',
 
         [Parameter(Mandatory = $false)]
         [ValidateNotNullOrEmpty()]

@@ -42,7 +42,7 @@ jobs:
             $AuditParameters = @{
               SubscriptionId   = @($env:AZURE_SUBSCRIPTION_ID)
               GracePeriodHours = 24
-              ApproverEmail    = 'nd4ever@hotmail.com'
+              ApproverEmail    = 'approver@example.com'
               AuditPath        = './out/audit'
             }
 

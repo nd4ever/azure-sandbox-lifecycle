@@ -94,7 +94,7 @@ Parameters for `Invoke-AzSandboxCleanupAudit`:
 |--------------------|-------------------------------------|----------------------------------------------------|
 | `SubscriptionId`   | Active Azure context                | Subscriptions to inspect                           |
 | `GracePeriodHours` | `24`                                | Hours after expiration before a sandbox qualifies  |
-| `ApproverEmail`    | `nd4ever@hotmail.com`               | Address that receives the approval request         |
+| `ApproverEmail`    | `approver@example.com`              | Address that receives the approval request         |
 | `FromAddress`      | `sandbox-lifecycle@no-reply.local`  | Sender address for the approval email              |
 | `AuditPath`        | `out/audit`                         | Directory for the audit record and email           |
 | `AcsConnectionString` | None                             | Communication Services connection string for email |

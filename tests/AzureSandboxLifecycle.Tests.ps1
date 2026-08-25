@@ -192,7 +192,7 @@ Describe 'Invoke-AzSandboxCleanupAudit' -Tag 'Unit' {
         @($Result.Candidates) | Should -HaveCount 1
         $Result.Candidates[0].Name | Should -Be 'expired'
         $Result.PendingApproval | Should -BeTrue
-        $Result.Approver | Should -Be 'nd4ever@hotmail.com'
+        $Result.Approver | Should -Be 'approver@example.com'
         $Result.NotificationStatus | Should -Be 'Simulated'
         Test-Path -LiteralPath $Result.NotificationPath | Should -BeTrue
         Test-Path -LiteralPath $Result.AuditRecordPath | Should -BeTrue
@@ -205,7 +205,7 @@ Describe 'Invoke-AzSandboxCleanupAudit' -Tag 'Unit' {
 
         $Result.NotificationStatus | Should -Be 'Sent'
         Should -Invoke Send-MailMessage -ModuleName AzureSandboxLifecycle -Times 1 -Exactly -ParameterFilter {
-            $To -eq 'nd4ever@hotmail.com'
+            $To -eq 'approver@example.com'
         }
     }
 
@@ -215,7 +215,7 @@ Describe 'Invoke-AzSandboxCleanupAudit' -Tag 'Unit' {
 
         $Result.NotificationStatus | Should -Be 'Sent'
         Should -Invoke Send-AzSandboxAcsEmail -ModuleName AzureSandboxLifecycle -Times 1 -Exactly -ParameterFilter {
-            $ToAddress -eq 'nd4ever@hotmail.com' -and $SenderAddress -eq 'donotreply@contoso.azurecomm.net'
+            $ToAddress -eq 'approver@example.com' -and $SenderAddress -eq 'donotreply@contoso.azurecomm.net'
         }
         Should -Invoke Send-MailMessage -ModuleName AzureSandboxLifecycle -Times 0 -Exactly
     }
