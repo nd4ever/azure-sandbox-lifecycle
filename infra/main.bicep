@@ -45,12 +45,12 @@ resource sandboxResourceGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = 
   name: sandbox.name
   location: sandbox.location
   tags: {
-    'sandbox-lifecycle/allowedLocations': join(sandbox.allowedLocations, ',')
-    'sandbox-lifecycle/managed': 'true'
-    'sandbox-lifecycle/monthlyBudget': string(sandbox.budget.amount)
-    'sandbox-lifecycle/owner': sandbox.owner
-    'sandbox-lifecycle/expiresOn': sandbox.expiresOn
-    'sandbox-lifecycle/status': 'Active'
+    'sandbox-lifecycle_allowedLocations': join(sandbox.allowedLocations, ',')
+    'sandbox-lifecycle_managed': 'true'
+    'sandbox-lifecycle_monthlyBudget': string(sandbox.budget.amount)
+    'sandbox-lifecycle_owner': sandbox.owner
+    'sandbox-lifecycle_expiresOn': sandbox.expiresOn
+    'sandbox-lifecycle_status': 'Active'
   }
 }
 

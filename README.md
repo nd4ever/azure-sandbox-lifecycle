@@ -154,12 +154,12 @@ The resource group is the source of truth for lifecycle state:
 
 | Tag                                  | Meaning                              |
 |--------------------------------------|--------------------------------------|
-| `sandbox-lifecycle/managed`          | Marks groups owned by this project   |
-| `sandbox-lifecycle/owner`            | Owner and budget notification email  |
-| `sandbox-lifecycle/expiresOn`        | UTC expiration timestamp             |
-| `sandbox-lifecycle/status`           | Persisted lifecycle state            |
-| `sandbox-lifecycle/monthlyBudget`    | Monthly budget amount                |
-| `sandbox-lifecycle/allowedLocations` | Comma-separated Azure region list    |
+| `sandbox-lifecycle_managed`          | Marks groups owned by this project   |
+| `sandbox-lifecycle_owner`            | Owner and budget notification email  |
+| `sandbox-lifecycle_expiresOn`        | UTC expiration timestamp             |
+| `sandbox-lifecycle_status`           | Persisted lifecycle state            |
+| `sandbox-lifecycle_monthlyBudget`    | Monthly budget amount                |
+| `sandbox-lifecycle_allowedLocations` | Comma-separated Azure region list    |
 
 ## Test
 

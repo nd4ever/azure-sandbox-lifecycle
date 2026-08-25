@@ -20,11 +20,11 @@ Describe 'Get-AzSandbox' -Tag 'Unit' {
                     subscriptionId = '00000000-0000-0000-0000-000000000001'
                     location       = 'centralus'
                     tags           = @{
-                        'sandbox-lifecycle/managed'          = 'true'
-                        'sandbox-lifecycle/owner'            = 'owner@contoso.com'
-                        'sandbox-lifecycle/expiresOn'        = '2099-01-01T00:00:00Z'
-                        'sandbox-lifecycle/monthlyBudget'    = '250'
-                        'sandbox-lifecycle/allowedLocations' = 'centralus,eastus2'
+                        'sandbox-lifecycle_managed'          = 'true'
+                        'sandbox-lifecycle_owner'            = 'owner@contoso.com'
+                        'sandbox-lifecycle_expiresOn'        = '2099-01-01T00:00:00Z'
+                        'sandbox-lifecycle_monthlyBudget'    = '250'
+                        'sandbox-lifecycle_allowedLocations' = 'centralus,eastus2'
                     }
                 }
             )
@@ -74,8 +74,8 @@ Describe 'Set-AzSandboxExpiration' -Tag 'Unit' {
             [pscustomobject]@{
                 ResourceId = '/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-sbx-one'
                 Tags       = @{
-                    'sandbox-lifecycle/managed'   = 'true'
-                    'sandbox-lifecycle/expiresOn' = '2099-01-01T00:00:00Z'
+                    'sandbox-lifecycle_managed'   = 'true'
+                    'sandbox-lifecycle_expiresOn' = '2099-01-01T00:00:00Z'
                 }
             }
         } -ModuleName AzureSandboxLifecycle
@@ -87,7 +87,7 @@ Describe 'Set-AzSandboxExpiration' -Tag 'Unit' {
 
         $Result.ExpiresOn | Should -Be ([DateTimeOffset]'2099-01-08T00:00:00Z')
         Should -Invoke Update-AzTag -ModuleName AzureSandboxLifecycle -Times 1 -Exactly -ParameterFilter {
-            $Operation -eq 'Merge' -and $Tag['sandbox-lifecycle/status'] -eq 'Active'
+            $Operation -eq 'Merge' -and $Tag['sandbox-lifecycle_status'] -eq 'Active'
         }
     }
 }

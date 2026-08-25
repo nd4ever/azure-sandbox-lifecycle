@@ -6,12 +6,12 @@
 
 #Requires -Version 7.0
 
-$script:AllowedLocationsTag = 'sandbox-lifecycle/allowedLocations'
-$script:ExpirationTag = 'sandbox-lifecycle/expiresOn'
-$script:ManagedTag = 'sandbox-lifecycle/managed'
-$script:MonthlyBudgetTag = 'sandbox-lifecycle/monthlyBudget'
-$script:OwnerTag = 'sandbox-lifecycle/owner'
-$script:StatusTag = 'sandbox-lifecycle/status'
+$script:AllowedLocationsTag = 'sandbox-lifecycle_allowedLocations'
+$script:ExpirationTag = 'sandbox-lifecycle_expiresOn'
+$script:ManagedTag = 'sandbox-lifecycle_managed'
+$script:MonthlyBudgetTag = 'sandbox-lifecycle_monthlyBudget'
+$script:OwnerTag = 'sandbox-lifecycle_owner'
+$script:StatusTag = 'sandbox-lifecycle_status'
 
 function Get-AzSandboxTagValue {
     <#
