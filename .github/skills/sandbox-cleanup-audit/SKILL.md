@@ -31,7 +31,7 @@ Use PowerShell 7 and install the Azure modules the lifecycle module depends on:
 Install-Module -Name Az.Accounts, Az.ResourceGraph, Az.Resources -Scope CurrentUser
 ```
 
-For scheduled runs, configure these GitHub Actions repository settings:
+For GitHub Actions runs, configure these repository settings:
 
 | Setting                                    | Type     | Purpose                                          |
 |--------------------------------------------|----------|--------------------------------------------------|

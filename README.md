@@ -20,7 +20,7 @@ self-contained HTML dashboard.
 * Extend active or expired sandboxes without recreating resources
 * Delete expired sandboxes after a configurable grace period
 * Export a searchable, filterable inventory dashboard with CSV download
-* Run hourly cleanup through GitHub Actions and workload identity federation
+* Run cleanup through GitHub Actions with workload identity federation (manual dispatch; add a cron schedule to automate)
 * Simulate deletion, email an approver, and delete with a managed identity
 
 ## Prerequisites
@@ -139,11 +139,12 @@ Export-AzSandboxDashboard -Path ./out/sandbox-inventory.html
 Invoke-Item ./out/sandbox-inventory.html
 ```
 
-## Schedule cleanup
+## Run cleanup in GitHub Actions
 
-The workflow in `.github/workflows/sandbox-cleanup.yml` runs at 17 minutes past
-each hour. It removes sandboxes after a 24-hour grace period and publishes the
-current dashboard as a workflow artifact.
+The workflow in `.github/workflows/sandbox-cleanup.yml` is triggered manually
+(`workflow_dispatch`). It removes sandboxes after a 24-hour grace period and
+publishes the current dashboard as a workflow artifact. Manual runs default to
+What-If mode; set the **what_if** input to `false` to perform cleanup.
 
 Configure an Entra application with a federated credential for this GitHub
 repository, assign the roles listed above, and add these GitHub Actions
@@ -153,8 +154,14 @@ repository variables:
 * `AZURE_TENANT_ID`
 * `AZURE_SUBSCRIPTION_ID`
 
-Manual workflow runs default to What-If mode. Scheduled runs perform cleanup.
-No client secret is required or stored.
+No client secret is required or stored. To run cleanup automatically, add a
+schedule trigger to the workflow, for example:
+
+```yaml
+on:
+  schedule:
+    - cron: '17 * * * *'  # 17 minutes past every hour
+```
 
 ## Audited cleanup with approval
 
