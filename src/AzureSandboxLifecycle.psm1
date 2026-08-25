@@ -1089,7 +1089,7 @@ function ConvertTo-AzSandboxApprovalEmail {
   <p>Audit <strong>$AuditId</strong> generated $($GeneratedOn.ToString('u')).</p>
   <p>The following expired sandboxes are queued for deletion. Approve or reject before automated cleanup proceeds.</p>
   <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse;">
-    <thead><tr><th>Sandbox</th><th>Owner</th><th>Subscription</th><th>Expired (UTC)</th></tr></thead>
+    <thead><tr><th>Resource group</th><th>Owner</th><th>Subscription</th><th>Expired (UTC)</th></tr></thead>
     <tbody>
 $Rows
     </tbody>

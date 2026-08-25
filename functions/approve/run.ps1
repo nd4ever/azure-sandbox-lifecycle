@@ -21,10 +21,13 @@ foreach ($Candidate in $ModuleCandidates) {
 
 function Write-SandboxHtml {
     param([int]$StatusCode, [string]$Html)
+    # ContentType must be set explicitly; the worker ignores Content-Type in Headers for string bodies.
     Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
-        StatusCode = $StatusCode
-        Headers    = @{ 'Content-Type' = 'text/html; charset=utf-8' }
-        Body       = $Html
+        StatusCode               = $StatusCode
+        ContentType              = 'text/html; charset=utf-8'
+        EnableContentNegotiation = $false
+        Headers                  = @{ 'Content-Type' = 'text/html; charset=utf-8' }
+        Body                     = $Html
     })
 }
 
