@@ -372,6 +372,77 @@ Describe 'Invoke-AzSandboxApprovedDeletion' -Tag 'Unit' {
     }
 }
 
+Describe 'Send-SandboxExpiryNotice owner actions' -Tag 'Unit' {
+    BeforeAll {
+        $RunbookPath = Join-Path $PSScriptRoot '../automation/runbooks/Send-SandboxExpiryNotice.ps1'
+        $script:RunbookSource = Get-Content -LiteralPath $RunbookPath -Raw
+    }
+
+    It 'Uses the approved labels and colors for owner action buttons' {
+        $script:RunbookSource.Contains('>Extend $ExtensionDays Days</a>') | Should -BeTrue
+        $script:RunbookSource.Contains('>Delete Sandbox</a>') | Should -BeTrue
+        $script:RunbookSource.Contains('background:#107c10') | Should -BeTrue
+        $script:RunbookSource.Contains('background:#a4262c') | Should -BeTrue
+    }
+
+    It 'Routes the Teams card to the owner UPN through the configured workflow' {
+        $script:RunbookSource.Contains("VariableName 'SandboxTeamsWorkflowUrl'") | Should -BeTrue
+        $script:RunbookSource.Contains('recipientUpn = $OwnerUpn') | Should -BeTrue
+        $script:RunbookSource.Contains("type         = 'message'") | Should -BeTrue
+        $script:RunbookSource.Contains("contentType = 'application/vnd.microsoft.card.adaptive'") | Should -BeTrue
+        $script:RunbookSource.Contains('content     = $adaptiveCard') | Should -BeTrue
+        $script:RunbookSource.Contains("TeamsNotificationStatus = $teamsNotificationStatus") | Should -BeTrue
+    }
+
+    It 'Uses clickable image buttons with approved Teams owner labels and colors' {
+        $script:RunbookSource.Contains("type    = 'ColumnSet'") | Should -BeTrue
+        $script:RunbookSource.Contains('altText      = "Extend $ExtensionDays Days"') | Should -BeTrue
+        $script:RunbookSource.Contains("altText      = 'Delete Sandbox'") | Should -BeTrue
+        $script:RunbookSource.Contains('url          = "data:image/png;base64,$TeamsExtendButtonPng"') | Should -BeTrue
+        $script:RunbookSource.Contains('url          = "data:image/png;base64,$TeamsDeleteButtonPng"') | Should -BeTrue
+        $script:RunbookSource.Contains('selectAction = [ordered]@{ type = ''Action.OpenUrl''; title = "Extend $ExtensionDays Days"; url = $ExtendUrl }') | Should -BeTrue
+        $script:RunbookSource.Contains("selectAction = [ordered]@{ type = 'Action.OpenUrl'; title = 'Delete Sandbox'; url = `$DeleteUrl }") | Should -BeTrue
+        $script:RunbookSource.Contains("style = 'positive'") | Should -BeFalse
+        $script:RunbookSource.Contains("style = 'destructive'") | Should -BeFalse
+    }
+
+    It 'Keeps the owner Teams button assets reproducible' {
+        $ButtonGeneratorPath = Join-Path $PSScriptRoot '../scripts/New-TeamsButtonImages.ps1'
+        $ButtonGeneratorSource = Get-Content -LiteralPath $ButtonGeneratorPath -Raw
+
+        $ButtonGeneratorSource.Contains("-Text 'Extend 30 Days' -HexColor '#107C10'") | Should -BeTrue
+        $ButtonGeneratorSource.Contains("-Text 'Delete Sandbox' -HexColor '#A4262C'") | Should -BeTrue
+        $ButtonGeneratorSource.Contains("'btn-extend-30-days.txt'") | Should -BeTrue
+        $ButtonGeneratorSource.Contains("'btn-delete-sandbox.txt'") | Should -BeTrue
+    }
+
+    It 'Supports isolating delivery to one resource group' {
+        $script:RunbookSource.Contains('[string]$ResourceGroupName') | Should -BeTrue
+        $script:RunbookSource.Contains('[string]::Equals([string]$sandbox.name, $ResourceGroupName') | Should -BeTrue
+    }
+}
+
+Describe 'Deploy-SandboxAutomation runtime association' -Tag 'Unit' {
+    BeforeAll {
+        $DeploymentScriptPath = Join-Path $PSScriptRoot '../automation/Deploy-SandboxAutomation.ps1'
+        $script:DeploymentScriptSource = Get-Content -LiteralPath $DeploymentScriptPath -Raw
+        $AutomationModulePath = Join-Path $PSScriptRoot '../infra/automation/modules/automation-account.bicep'
+        $script:AutomationModuleSource = Get-Content -LiteralPath $AutomationModulePath -Raw
+    }
+
+    It 'Checks the existing Runtime Environment before applying an association' {
+        $script:DeploymentScriptSource.Contains('$runbookResponse = Invoke-AzRestMethod -Path $runbookResourcePath -Method GET') | Should -BeTrue
+        $script:DeploymentScriptSource.Contains('if ($runbookResource.properties.runtimeEnvironment -ne $RuntimeEnvironmentName)') | Should -BeTrue
+        $script:DeploymentScriptSource.Contains('Invoke-AzRestMethod -Path $runbookResourcePath -Method PATCH -Payload $runtimePayload') | Should -BeTrue
+    }
+
+    It 'Clears the Teams workflow variable when Teams delivery is disabled' {
+        $script:AutomationModuleSource.Contains("resource teamsWorkflowUrlVar 'Microsoft.Automation/automationAccounts/variables@2023-11-01' = {") | Should -BeTrue
+        $script:AutomationModuleSource.Contains("resource teamsWorkflowUrlVar 'Microsoft.Automation/automationAccounts/variables@2023-11-01' = if") | Should -BeFalse
+        $script:AutomationModuleSource.Contains('value: ''"${teamsWorkflowUrl ?? ''''}"''') | Should -BeTrue
+    }
+}
+
 AfterAll {
     Remove-Module AzureSandboxLifecycle -Force -ErrorAction SilentlyContinue
 }

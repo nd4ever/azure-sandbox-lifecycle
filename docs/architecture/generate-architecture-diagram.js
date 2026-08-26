@@ -41,6 +41,7 @@ const iconCache = {};
 // pack's numeric prefixes staying identical across releases.
 const iconSpec = {
   funcApp:    'service-function-apps.svg',
+  automation: 'service-automation-accounts.svg',
   storage:    'service-storage-accounts.svg',
   acs:        'service-azure-communication-services.svg',
   managedId:  'service-managed-identities.svg',
@@ -122,7 +123,7 @@ class Diagram {
     return id;
   }
 
-  // Non-Azure actor (GitHub, Teams, human) rendered as a labeled chip.
+  // Non-Azure actor (Teams or human) rendered as a labeled chip.
   actor(id, label, x, y, w = 150, h = 60) {
     this.geom[id] = { x, y, w, h };
     this.icons.push(
@@ -210,7 +211,7 @@ class Diagram {
   </div>
   <div class="legend">
     Solid arrows show request/data flow &nbsp;&bull;&nbsp; dashed arrows show governance applied at provisioning time.
-    HMAC-signed, time-limited approval tokens; deletion runs only after a human confirms.
+    HMAC-signed, time-limited owner-action tokens; deletion runs only after the owner confirms.
   </div>
 </body></html>`;
   }
@@ -225,41 +226,37 @@ class Diagram {
 
 function generate() {
   const d = new Diagram(
-    'Azure Sandbox Lifecycle — Approval & Deletion Architecture',
-    'Button-triggered, human-approved deletion of expired sandbox resource groups using managed identities',
+    'Azure Sandbox Lifecycle - Owner Notification & Deletion Architecture',
+    'Daily owner notification, self-service extension, and confirmation-gated deletion using managed identities',
     1520, 1060
   );
 
-  // --- External automation & human approver (outside Azure) ---
-  d.container('ext', 'Automation & human approval (outside Azure)', 40, 60, 1440, 150, 'onPrem');
-  d.actor('ghAudit',   'GitHub Actions\nAudit workflow',   130, 108, 190, 66);
-  d.actor('ghCleanup', 'GitHub Actions\nCleanup workflow', 360, 108, 190, 66);
-  d.actor('teams',     'Microsoft Teams\n(Power Automate)', 940, 108, 180, 66);
-  d.actor('approver',  'Approver',                          1270, 108, 150, 66);
+  // --- Human owner (outside Azure) ---
+  d.container('ext', 'Owner interaction (outside Azure)', 40, 60, 1440, 150, 'onPrem');
+  d.actor('flowbot', 'Power Automate Flow bot', 1000, 108, 190, 66);
+  d.actor('owner', 'Sandbox owner', 1270, 108, 150, 66);
 
   // --- Azure ---
   d.container('azure', 'Azure — Management-Subscription', 40, 250, 1440, 780, 'region');
 
   // Notifications RG
-  d.container('rgNotify', 'rg-sbx-notifications', 80, 300, 300, 190, 'resourceGroup', true);
+  d.container('rgNotify', 'rg-sbx-notifications', 80, 300, 260, 210, 'resourceGroup', true);
   d.iconCell('acs', 'Azure Communication\nServices (Email)', 'acs', 150, 360);
 
   // Approval RG
-  d.container('rgApproval', 'rg-sbx-approval', 420, 300, 560, 210, 'resourceGroup', true);
-  d.iconCell('func',    'Approval Function App\nFlex Consumption · PS 7.4', 'funcApp', 460, 360);
-  d.iconCell('storage', 'Storage account\n(identity-based)',                'storage', 660, 360);
-  d.iconCell('sysMi',   'System-assigned MI\nContributor on sub',           'managedId', 850, 360);
+  d.container('rgApproval', 'rg-sbx-approval', 370, 300, 720, 250, 'resourceGroup', true);
+  d.iconCell('automation', 'Automation Account\nDaily notice · Reader',     'automation', 410, 360);
+  d.iconCell('func',       'Approval Function App\nFlex Consumption · PS 7.4', 'funcApp', 590, 360);
+  d.iconCell('storage',    'Storage account\n(identity-based)',           'storage', 770, 360);
+  d.iconCell('sysMi',      'Function system MI\nContributor on sub',        'managedId', 960, 360);
 
   // Provisioning guardrails
-  d.container('rgGov', 'Provisioning guardrails (Bicep)', 1020, 300, 400, 210, 'resourceGroup', true);
-  d.iconCell('policy', 'Azure Policy\n(allowed locations)', 'policy', 1070, 360);
-  d.iconCell('budget', 'Budget alerts\n80% actual · 100% fcst', 'budget', 1260, 360);
+  d.container('rgGov', 'Provisioning guardrails (Bicep)', 1120, 300, 300, 250, 'resourceGroup', true);
+  d.iconCell('policy', 'Azure Policy\n(allowed locations)', 'policy', 1160, 360);
+  d.iconCell('budget', 'Budget alerts\n80% actual · 100% fcst', 'budget', 1320, 360);
 
   // Optional budget-cleanup path: an action group calls the Function on 100% actual spend.
   d.iconCell('actionGroup', 'Action Group\nbudget \u2192 cleanup', 'monitor', 1150, 560);
-
-  // Deletion identity (used by cleanup workflow on Azure-hosted runner)
-  d.iconCell('userMi', 'Deletion identity\n(user-assigned MI)', 'managedId', 460, 590);
 
   // Managed sandboxes
   d.container('sandboxes', 'Managed sandbox resource groups  ·  tag: sandbox-lifecycle_managed = true', 80, 700, 1340, 300, 'workloadGroup');
@@ -276,18 +273,17 @@ function generate() {
   d.iconCell('st3',  'Storage', 'storage', 1230, 820);
 
   // --- Flows ---
-  d.connect('ghAudit', 'acs',      { fromSide: 'bottom', toSide: 'top', label: 'signed email', color: '#1565C0' });
-  d.connect('ghAudit', 'teams',    { fromSide: 'top', toSide: 'top', label: 'approval card', color: '#1565C0' });
-  d.connect('acs', 'approver',     { fromSide: 'top', toSide: 'bottom', label: 'email' });
-  d.connect('teams', 'approver',   { fromSide: 'right', toSide: 'left', label: 'card' });
-  d.connect('approver', 'func',    { fromSide: 'bottom', toSide: 'top', label: 'Approve + Confirm (HMAC token)', color: '#107C10', width: 3 });
-  d.connect('func', 'storage',     { fromSide: 'right', toSide: 'left', label: 'identity-based' });
-  d.connect('storage', 'sysMi',    { fromSide: 'right', toSide: 'left', label: 'auth' });
-  d.connect('func', 'rg3',         { fromSide: 'bottom', toSide: 'top', label: 'deletes expired RG', color: '#A4262C', width: 3 });
-  d.connect('ghCleanup', 'userMi', { fromSide: 'bottom', toSide: 'top', label: 'assumes' });
-  d.connect('userMi', 'sandboxes', { fromSide: 'bottom', toSide: 'top', label: 'scheduled / manual delete', color: '#A4262C', width: 2, dashed: true });
+  d.connect('automation', 'acs',   { fromSide: 'left', toSide: 'right', color: '#1565C0' });
+  d.connect('acs', 'owner',        { fromSide: 'top', toSide: 'top', label: 'email notice' });
+  d.connect('automation', 'flowbot', { fromSide: 'top', toSide: 'left', label: 'Adaptive Card + owner UPN', color: '#6264A7' });
+  d.connect('flowbot', 'owner',    { fromSide: 'right', toSide: 'left', label: 'Teams chat', color: '#6264A7' });
+  d.connect('owner', 'func',       { fromSide: 'bottom', toSide: 'top', label: 'Extend or Delete + Confirm', color: '#107C10', width: 3 });
+  d.connect('func', 'storage',     { fromSide: 'right', toSide: 'left', label: 'host storage' });
+  d.connect('func', 'sysMi',       { fromSide: 'right', toSide: 'left', label: 'uses' });
+  d.connect('sysMi', 'rg3',        { fromSide: 'bottom', toSide: 'top', label: 'tags / deletes RG', color: '#A4262C', width: 3 });
+  d.connect('automation', 'sandboxes', { fromSide: 'bottom', toSide: 'top', label: 'Resource Graph read', color: '#1565C0' });
   d.connect('policy', 'rg1', { fromSide: 'bottom', toSide: 'top', color: '#7B1FA2', dashed: true, label: 'governs' });
-  d.connect('budget', 'rg2', { fromSide: 'bottom', toSide: 'top', color: '#7B1FA2', dashed: true, label: 'notifies' });
+  d.connect('budget', 'rg2', { fromSide: 'bottom', toSide: 'top', color: '#7B1FA2', dashed: true });
   d.connect('budget', 'actionGroup', { fromSide: 'bottom', toSide: 'top', color: '#E65100', width: 2, label: '100% actual' });
   d.connect('actionGroup', 'func', { fromSide: 'left', toSide: 'right', color: '#E65100', width: 2, label: 'webhook \u2192 mark expired' });
 

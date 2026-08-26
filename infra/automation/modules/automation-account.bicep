@@ -7,6 +7,15 @@ param location string
 @description('Name of the Automation Account.')
 param automationAccountName string
 
+@description('Name of the PowerShell 7.2 Runtime Environment used by the expiry-notice runbook.')
+param runtimeEnvironmentName string
+
+@description('Version of the default Az package in the Runtime Environment.')
+param azModuleVersion string
+
+@description('PowerShell Gallery version of Az.ResourceGraph to install in the Runtime Environment.')
+param resourceGraphModuleVersion string
+
 @description('Shared HMAC secret; must match the Function app SANDBOX_SIGNING_SECRET.')
 @secure()
 param signingSecret string
@@ -21,6 +30,10 @@ param acsSenderAddress string
 @description('Base URL of the approval Function app, e.g. https://fn-sbx-approval-xxxx.azurewebsites.net.')
 param approvalBaseUrl string
 
+@description('Optional Power Automate HTTP trigger URL used to send owner-specific Teams notifications.')
+@secure()
+param teamsWorkflowUrl string?
+
 @description('First run time for the daily schedule (UTC, ISO 8601). Defaults to one hour after deployment.')
 param scheduleStartTime string = dateTimeAdd(utcNow(), 'PT1H')
 
@@ -33,6 +46,33 @@ resource automationAccount 'Microsoft.Automation/automationAccounts@2023-11-01' 
   properties: {
     sku: {
       name: 'Basic'
+    }
+  }
+}
+
+resource runtimeEnvironment 'Microsoft.Automation/automationAccounts/runtimeEnvironments@2024-10-23' = {
+  parent: automationAccount
+  name: runtimeEnvironmentName
+  location: location
+  properties: {
+    runtime: {
+      language: 'PowerShell'
+      version: '7.2'
+    }
+    defaultPackages: {
+      Az: azModuleVersion
+    }
+    description: 'Pinned runtime for sandbox expiry notices.'
+  }
+}
+
+resource resourceGraphPackage 'Microsoft.Automation/automationAccounts/runtimeEnvironments/packages@2024-10-23' = {
+  parent: runtimeEnvironment
+  name: 'Az.ResourceGraph'
+  properties: {
+    contentLink: {
+      uri: 'https://www.powershellgallery.com/api/v2/package/Az.ResourceGraph/${resourceGraphModuleVersion}'
+      version: resourceGraphModuleVersion
     }
   }
 }
@@ -73,6 +113,15 @@ resource approvalBaseUrlVar 'Microsoft.Automation/automationAccounts/variables@2
   }
 }
 
+resource teamsWorkflowUrlVar 'Microsoft.Automation/automationAccounts/variables@2023-11-01' = {
+  parent: automationAccount
+  name: 'SandboxTeamsWorkflowUrl'
+  properties: {
+    isEncrypted: true
+    value: '"${teamsWorkflowUrl ?? ''}"'
+  }
+}
+
 resource dailySchedule 'Microsoft.Automation/automationAccounts/schedules@2023-11-01' = {
   parent: automationAccount
   name: 'daily-expiry-notice'
@@ -92,3 +141,6 @@ output automationAccountName string = automationAccount.name
 
 @description('Name of the daily schedule for linking the runbook job.')
 output scheduleName string = dailySchedule.name
+
+@description('Name of the Runtime Environment for the expiry-notice runbook.')
+output runtimeEnvironmentName string = runtimeEnvironment.name
