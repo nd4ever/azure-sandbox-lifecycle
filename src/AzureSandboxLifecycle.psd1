@@ -25,6 +25,7 @@
         'New-AzSandboxApprovalToken'
         'Remove-AzExpiredSandbox'
         'Set-AzSandboxExpiration'
+        'Set-AzSandboxExpiredByBudget'
         'Test-AzSandboxApprovalToken'
     )
     CmdletsToExport   = @()

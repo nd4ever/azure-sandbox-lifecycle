@@ -21,6 +21,7 @@ self-contained HTML dashboard.
 * Delete expired sandboxes after a configurable grace period
 * Export a searchable, filterable inventory dashboard with CSV download
 * Run cleanup through GitHub Actions with workload identity federation (manual dispatch; add a cron schedule to automate)
+* Mark a sandbox for cleanup when its actual spend reaches its budget (optional)
 * Simulate deletion, email an approver, and delete with a managed identity
 
 ## Prerequisites
@@ -61,6 +62,7 @@ Local commands and module parameters:
 | `<teams-webhook-url>`                       | `-TeamsWebhookUrl`                                        |
 | `<STRONG_SHARED_SECRET>`                    | `-SigningSecret` and the Function `SANDBOX_SIGNING_SECRET`|
 | `<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>`       | Function app name and `-ApprovalBaseUrl`                 |
+| `<BUDGET_WEBHOOK_URL>`                      | `New-AzSandbox -BudgetWebhookUrl`                        |
 | `<managed-identity-client-id>`             | `Remove-AzExpiredSandbox -ManagedIdentityClientId`       |
 
 GitHub Actions — set these under **Settings → Secrets and variables → Actions**:
@@ -292,6 +294,31 @@ Invoke-AzSandboxCleanupAudit `
   -SigningSecret '<STRONG_SHARED_SECRET>'
 ```
 
+## Budget-triggered cleanup
+
+By default a budget breach only emails the owner. To also mark a sandbox for
+deletion when its **actual** spend reaches 100 percent of its budget, pass the
+approval Function app's budget hook to `New-AzSandbox`:
+
+```powershell
+New-AzSandbox `
+  -Name 'rg-sbx-api-001' `
+  -Location 'centralus' `
+  -Owner 'owner@contoso.com' `
+  -MonthlyBudget 250 `
+  -BudgetWebhookUrl 'https://<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>.azurewebsites.net/api/budgethook?token=<STRONG_SHARED_SECRET>'
+```
+
+This provisions an Azure Monitor action group on the budget. When actual spend
+crosses 100 percent, the action group calls the `budgethook` Function, which
+sets `sandbox-lifecycle_expiresOn` to now and records
+`sandbox-lifecycle_flaggedReason = budget-exceeded`. The sandbox then flows
+through the normal cleanup audit, approval, and deletion path, so the human
+approval gate still applies and a cost overage never deletes anything on its
+own. The `token` query value must equal the Function app's
+`SANDBOX_SIGNING_SECRET`. Omit `-BudgetWebhookUrl` to keep budget alerts
+email-only.
+
 ## Lifecycle metadata
 
 The resource group is the source of truth for lifecycle state:
@@ -304,6 +331,7 @@ The resource group is the source of truth for lifecycle state:
 | `sandbox-lifecycle_status`           | Persisted lifecycle state            |
 | `sandbox-lifecycle_monthlyBudget`    | Monthly budget amount                |
 | `sandbox-lifecycle_allowedLocations` | Comma-separated Azure region list    |
+| `sandbox-lifecycle_flaggedReason`    | Why a sandbox was flagged (e.g. budget) |
 
 ## Test
 

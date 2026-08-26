@@ -46,6 +46,7 @@ const iconSpec = {
   managedId:  'service-managed-identities.svg',
   policy:     'service-policy.svg',
   budget:     'service-cost-management.svg',
+  monitor:    'service-monitor.svg',
   vm:         'service-virtual-machine.svg',
   sqlDb:      'service-sql-database.svg',
   resourceGrp:'service-resource-groups.svg',
@@ -254,6 +255,9 @@ function generate() {
   d.iconCell('policy', 'Azure Policy\n(allowed locations)', 'policy', 1070, 360);
   d.iconCell('budget', 'Budget alerts\n80% actual · 100% fcst', 'budget', 1260, 360);
 
+  // Optional budget-cleanup path: an action group calls the Function on 100% actual spend.
+  d.iconCell('actionGroup', 'Action Group\nbudget \u2192 cleanup', 'monitor', 1150, 560);
+
   // Deletion identity (used by cleanup workflow on Azure-hosted runner)
   d.iconCell('userMi', 'Deletion identity\n(user-assigned MI)', 'managedId', 460, 590);
 
@@ -284,6 +288,8 @@ function generate() {
   d.connect('userMi', 'sandboxes', { fromSide: 'bottom', toSide: 'top', label: 'scheduled / manual delete', color: '#A4262C', width: 2, dashed: true });
   d.connect('policy', 'rg1', { fromSide: 'bottom', toSide: 'top', color: '#7B1FA2', dashed: true, label: 'governs' });
   d.connect('budget', 'rg2', { fromSide: 'bottom', toSide: 'top', color: '#7B1FA2', dashed: true, label: 'notifies' });
+  d.connect('budget', 'actionGroup', { fromSide: 'bottom', toSide: 'top', color: '#E65100', width: 2, label: '100% actual' });
+  d.connect('actionGroup', 'func', { fromSide: 'left', toSide: 'right', color: '#E65100', width: 2, label: 'webhook \u2192 mark expired' });
 
   d.write('sandbox-lifecycle-architecture.html');
 }

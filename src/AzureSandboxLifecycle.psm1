@@ -12,6 +12,7 @@ $script:ManagedTag = 'sandbox-lifecycle_managed'
 $script:MonthlyBudgetTag = 'sandbox-lifecycle_monthlyBudget'
 $script:OwnerTag = 'sandbox-lifecycle_owner'
 $script:StatusTag = 'sandbox-lifecycle_status'
+$script:FlaggedReasonTag = 'sandbox-lifecycle_flaggedReason'
 
 # Base64 PNG buttons for the Teams card (bright green #107c10 / red #a4262c to match the email).
 # Regenerate with scripts/New-TeamsButtonImages.ps1.
@@ -260,6 +261,9 @@ function New-AzSandbox {
         Azure regions in which resources can be deployed. Defaults to Location.
     .PARAMETER SubscriptionId
         Azure subscription ID. Defaults to the active Azure context.
+    .PARAMETER BudgetWebhookUrl
+        Optional Function budget-hook URL (including its token) that a budget breach
+        calls to mark the sandbox for cleanup. Empty leaves budget alerts email-only.
     .PARAMETER TemplateFile
         Path to the subscription-scoped Bicep template.
     .EXAMPLE
@@ -305,6 +309,9 @@ function New-AzSandbox {
         [string]$SubscriptionId,
 
         [Parameter(Mandatory = $false)]
+        [string]$BudgetWebhookUrl = '',
+
+        [Parameter(Mandatory = $false)]
         [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
         [string]$TemplateFile = (Join-Path (Split-Path $PSScriptRoot -Parent) 'infra/main.bicep')
     )
@@ -343,7 +350,10 @@ function New-AzSandbox {
         Name                    = "sbx-$SafeName-$($Now.ToString('yyyyMMddHHmmss'))"
         Location                = $Location
         TemplateFile            = (Resolve-Path -LiteralPath $TemplateFile).Path
-        TemplateParameterObject = @{ sandbox = $SandboxConfiguration }
+        TemplateParameterObject = @{
+            sandbox          = $SandboxConfiguration
+            budgetWebhookUrl = $BudgetWebhookUrl
+        }
         ErrorAction             = 'Stop'
     }
 
@@ -454,6 +464,95 @@ function Set-AzSandboxExpiration {
         SubscriptionId = [string]$Context.Subscription.Id
         ExpiresOn     = $NewExpiration
         AdditionalDays = $AdditionalDays
+    }
+}
+
+function Set-AzSandboxExpiredByBudget {
+    <#
+    .SYNOPSIS
+        Marks a lifecycle-managed sandbox as expired because it breached its budget.
+    .DESCRIPTION
+        Sets the expiration tag to now so the standard cleanup audit and approval flow
+        picks the sandbox up on its next run, and records the reason on the resource
+        group. Intended to be called by the budget action-group webhook. Only touches
+        resource groups that still carry the managed tag; the human approval gate in the
+        cleanup flow still applies before anything is deleted.
+    .PARAMETER Name
+        Sandbox resource group name.
+    .PARAMETER SubscriptionId
+        Azure subscription ID. Defaults to the active Azure context.
+    .PARAMETER Reason
+        Reason recorded on the resource group. Defaults to 'budget-exceeded'.
+    .PARAMETER Now
+        Timestamp used as the new expiration. Defaults to the current UTC time.
+    .PARAMETER SkipManagedTagCheck
+        Bypasses the managed-tag verification. Intended for tests only.
+    .EXAMPLE
+        Set-AzSandboxExpiredByBudget -Name 'rg-sbx-api-001' -SubscriptionId '00000000-0000-0000-0000-000000000001'
+    .OUTPUTS
+        System.Management.Automation.PSCustomObject
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    [OutputType([pscustomobject])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Name,
+
+        [Parameter(Mandatory = $false)]
+        [string]$SubscriptionId,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Reason = 'budget-exceeded',
+
+        [Parameter(Mandatory = $false)]
+        [datetime]$Now = [DateTimeOffset]::UtcNow.UtcDateTime,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$SkipManagedTagCheck
+    )
+
+    $Context = Select-AzSandboxSubscriptionContext -SubscriptionId $SubscriptionId
+    $ResourceGroup = Get-AzResourceGroup -Name $Name -ErrorAction SilentlyContinue
+    if ($null -eq $ResourceGroup) {
+        return [pscustomobject]@{
+            Name           = $Name
+            SubscriptionId = [string]$Context.Subscription.Id
+            Status         = 'NotFound'
+            Reason         = $Reason
+            ExpiresOn      = $null
+        }
+    }
+
+    if (-not $SkipManagedTagCheck) {
+        $ManagedValue = Get-AzSandboxTagValue -Tags $ResourceGroup.Tags -Name $script:ManagedTag
+        if ($ManagedValue -ne 'true') {
+            return [pscustomobject]@{
+                Name           = $Name
+                SubscriptionId = [string]$Context.Subscription.Id
+                Status         = 'NotManaged'
+                Reason         = $Reason
+                ExpiresOn      = $null
+            }
+        }
+    }
+
+    $ExpiresOn = ([DateTimeOffset]$Now).ToUniversalTime()
+    if ($PSCmdlet.ShouldProcess($Name, "Mark sandbox expired for cleanup (reason: $Reason)")) {
+        Update-AzTag -ResourceId $ResourceGroup.ResourceId -Tag @{
+            $script:ExpirationTag    = $ExpiresOn.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+            $script:StatusTag        = 'Expired'
+            $script:FlaggedReasonTag = $Reason
+        } -Operation Merge -ErrorAction Stop | Out-Null
+    }
+
+    return [pscustomobject]@{
+        Name           = $Name
+        SubscriptionId = [string]$Context.Subscription.Id
+        Status         = 'Marked'
+        Reason         = $Reason
+        ExpiresOn      = $ExpiresOn
     }
 }
 
@@ -1491,5 +1590,6 @@ Export-ModuleMember -Function @(
     'New-AzSandboxApprovalToken'
     'Remove-AzExpiredSandbox'
     'Set-AzSandboxExpiration'
+    'Set-AzSandboxExpiredByBudget'
     'Test-AzSandboxApprovalToken'
 )

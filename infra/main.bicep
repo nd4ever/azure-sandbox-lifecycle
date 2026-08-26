@@ -41,6 +41,10 @@ type SandboxConfig = {
 @description('Lifecycle and governance configuration for the sandbox.')
 param sandbox SandboxConfig
 
+@description('Optional Function budget-hook URL (including its token) that a budget breach calls to mark the sandbox for cleanup. Empty leaves budget alerts email-only.')
+@secure()
+param budgetWebhookUrl string = ''
+
 resource sandboxResourceGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: sandbox.name
   location: sandbox.location
@@ -60,6 +64,7 @@ module guardrails './modules/sandbox-guardrails.bicep' = {
     allowedLocations: sandbox.allowedLocations
     budget: sandbox.budget
     owner: sandbox.owner
+    budgetWebhookUrl: budgetWebhookUrl
   }
 }
 

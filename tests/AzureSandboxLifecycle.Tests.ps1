@@ -92,6 +92,45 @@ Describe 'Set-AzSandboxExpiration' -Tag 'Unit' {
     }
 }
 
+Describe 'Set-AzSandboxExpiredByBudget' -Tag 'Unit' {
+    BeforeEach {
+        Mock Get-AzContext {
+            [pscustomobject]@{ Subscription = [pscustomobject]@{ Id = '00000000-0000-0000-0000-000000000001' } }
+        } -ModuleName AzureSandboxLifecycle
+        Mock Update-AzTag {} -ModuleName AzureSandboxLifecycle
+    }
+
+    It 'Marks a managed sandbox expired and records the budget reason' {
+        Mock Get-AzResourceGroup {
+            [pscustomobject]@{
+                ResourceId = '/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-sbx-one'
+                Tags       = @{ 'sandbox-lifecycle_managed' = 'true'; 'sandbox-lifecycle_expiresOn' = '2099-01-01T00:00:00Z' }
+            }
+        } -ModuleName AzureSandboxLifecycle
+
+        $Result = Set-AzSandboxExpiredByBudget -Name 'rg-sbx-one' -Confirm:$false
+
+        $Result.Status | Should -Be 'Marked'
+        $Result.Reason | Should -Be 'budget-exceeded'
+        Should -Invoke Update-AzTag -ModuleName AzureSandboxLifecycle -Times 1 -Exactly -ParameterFilter {
+            $Operation -eq 'Merge' -and
+            $Tag['sandbox-lifecycle_status'] -eq 'Expired' -and
+            $Tag['sandbox-lifecycle_flaggedReason'] -eq 'budget-exceeded'
+        }
+    }
+
+    It 'Leaves a non-managed resource group untouched' {
+        Mock Get-AzResourceGroup {
+            [pscustomobject]@{ ResourceId = '/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-other'; Tags = @{} }
+        } -ModuleName AzureSandboxLifecycle
+
+        $Result = Set-AzSandboxExpiredByBudget -Name 'rg-other' -Confirm:$false
+
+        $Result.Status | Should -Be 'NotManaged'
+        Should -Invoke Update-AzTag -ModuleName AzureSandboxLifecycle -Times 0 -Exactly
+    }
+}
+
 Describe 'Remove-AzExpiredSandbox' -Tag 'Unit' {
     BeforeEach {
         Mock Get-AzSandbox {

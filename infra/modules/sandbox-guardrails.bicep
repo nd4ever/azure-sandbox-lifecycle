@@ -25,6 +25,12 @@ param budget BudgetConfig
 @description('Email address that receives budget notifications.')
 param owner string
 
+@description('Optional Function budget-hook URL (including its token) that a budget breach calls to mark the sandbox for cleanup. Empty leaves budget alerts email-only.')
+@secure()
+param budgetWebhookUrl string = ''
+
+var enableBudgetCleanup = !empty(budgetWebhookUrl)
+
 resource allowedLocationsPolicyDefinition 'Microsoft.Authorization/policyDefinitions@2023-04-01' existing = {
   scope: tenant()
   name: 'e56962a6-4747-49cd-b67b-bf8b01975c4c'
@@ -42,6 +48,23 @@ resource allowedLocationsPolicyAssignment 'Microsoft.Authorization/policyAssignm
         value: allowedLocations
       }
     }
+  }
+}
+
+// Fires when actual spend reaches 100% of the budget so the sandbox can be marked for cleanup.
+resource budgetActionGroup 'Microsoft.Insights/actionGroups@2023-09-01-preview' = if (enableBudgetCleanup) {
+  name: 'sandbox-budget-cleanup'
+  location: 'Global'
+  properties: {
+    groupShortName: 'sbxbudget'
+    enabled: true
+    webhookReceivers: [
+      {
+        name: 'sandbox-cleanup-hook'
+        serviceUri: budgetWebhookUrl
+        useCommonAlertSchema: false
+      }
+    ]
   }
 }
 
@@ -77,6 +100,19 @@ resource monthlyBudget 'Microsoft.Consumption/budgets@2023-11-01' = {
         operator: 'GreaterThanOrEqualTo'
         threshold: 100
         thresholdType: 'Forecasted'
+      }
+      actual100Percent: {
+        contactEmails: [
+          owner
+        ]
+        contactGroups: enableBudgetCleanup ? [
+          budgetActionGroup.id
+        ] : []
+        contactRoles: []
+        enabled: true
+        operator: 'GreaterThanOrEqualTo'
+        threshold: 100
+        thresholdType: 'Actual'
       }
     }
   }
