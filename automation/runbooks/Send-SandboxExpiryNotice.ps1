@@ -199,9 +199,9 @@ foreach ($sandbox in $sandboxes) {
   <p>Sandbox <strong>$([System.Net.WebUtility]::HtmlEncode($sandbox.name))</strong> is scheduled to be cleaned up.</p>
   <p>Extend it by <strong>$ExtensionDays days</strong> if you still need it, or delete it now if you are done:</p>
   <p>
-    <a href="$extendUrl" style="background:#107c10;color:#fff;padding:12px 22px;border-radius:4px;font-weight:600;text-decoration:none;">Extend $ExtensionDays days</a>
+    <a href="$extendUrl" style="background:#107c10;color:#fff;padding:12px 22px;border-radius:4px;font-weight:600;text-decoration:none;">Extend $ExtensionDays Days</a>
     &nbsp;&nbsp;
-    <a href="$deleteUrl" style="background:#a4262c;color:#fff;padding:12px 22px;border-radius:4px;font-weight:600;text-decoration:none;">Delete now</a>
+    <a href="$deleteUrl" style="background:#a4262c;color:#fff;padding:12px 22px;border-radius:4px;font-weight:600;text-decoration:none;">Delete Sandbox</a>
   </p>
   <p style="color:#605e5c;font-size:13px;">Delete asks you to confirm and will remove all resources in the resource group. If you take no action the sandbox stays flagged for manual cleanup. These links expire in $TokenTtlHours hours.</p>
 </div>

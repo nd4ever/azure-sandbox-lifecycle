@@ -372,6 +372,18 @@ Describe 'Invoke-AzSandboxApprovedDeletion' -Tag 'Unit' {
     }
 }
 
+Describe 'Send-SandboxExpiryNotice owner actions' -Tag 'Unit' {
+    It 'Uses the approved labels and colors for owner action buttons' {
+        $RunbookPath = Join-Path $PSScriptRoot '../automation/runbooks/Send-SandboxExpiryNotice.ps1'
+        $RunbookSource = Get-Content -LiteralPath $RunbookPath -Raw
+
+        $RunbookSource.Contains('>Extend $ExtensionDays Days</a>') | Should -BeTrue
+        $RunbookSource.Contains('>Delete Sandbox</a>') | Should -BeTrue
+        $RunbookSource.Contains('background:#107c10') | Should -BeTrue
+        $RunbookSource.Contains('background:#a4262c') | Should -BeTrue
+    }
+}
+
 AfterAll {
     Remove-Module AzureSandboxLifecycle -Force -ErrorAction SilentlyContinue
 }
