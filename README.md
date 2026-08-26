@@ -20,6 +20,7 @@ self-contained HTML dashboard.
 * Extend active or expired sandboxes without recreating resources
 * Delete expired sandboxes after a configurable grace period
 * Export a searchable, filterable inventory dashboard with CSV download
+* Serve the inventory dashboard live from the approval Function app (optional)
 * Run cleanup through GitHub Actions with workload identity federation (manual dispatch; add a cron schedule to automate)
 * Mark a sandbox for cleanup when its actual spend reaches its budget (optional)
 * Simulate deletion, email an approver, and delete with a managed identity
@@ -318,6 +319,22 @@ approval gate still applies and a cost overage never deletes anything on its
 own. The `token` query value must equal the Function app's
 `SANDBOX_SIGNING_SECRET`. Omit `-BudgetWebhookUrl` to keep budget alerts
 email-only.
+
+## Hosted inventory page
+
+The approval Function app also serves the inventory dashboard live at
+`GET /api/inventory`, so the same view opens in a browser without running the
+export locally. It reuses the app's managed identity to query Azure Resource
+Graph, so the page is always current. The endpoint requires the signing secret,
+so the inventory is not exposed anonymously:
+
+```text
+https://<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>.azurewebsites.net/api/inventory?token=<STRONG_SHARED_SECRET>
+```
+
+Add an optional `&subscriptionId=<id>` to target a specific subscription; by
+default it uses the Function identity's subscription context. The `token` must
+equal the Function app's `SANDBOX_SIGNING_SECRET`.
 
 ## Lifecycle metadata
 

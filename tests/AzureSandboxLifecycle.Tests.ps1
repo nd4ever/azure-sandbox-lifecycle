@@ -186,6 +186,14 @@ Describe 'Export-AzSandboxDashboard' -Tag 'Unit' {
         $Html | Should -Match 'scoutTheme'
         $Html | Should -Match '--cp-accent'
     }
+
+    It 'Returns the dashboard HTML as a string' {
+        $Html = Get-AzSandboxDashboardHtml
+
+        $Html | Should -BeOfType [string]
+        $Html | Should -Match 'Azure sandbox inventory'
+        $Html | Should -Match 'id="rows"'
+    }
 }
 
 Describe 'Connect-AzSandbox' -Tag 'Unit' {

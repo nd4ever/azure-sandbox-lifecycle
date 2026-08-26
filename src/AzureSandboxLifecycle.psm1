@@ -887,6 +887,31 @@ function ConvertTo-AzSandboxDashboardHtml {
     return $Html.Replace('__INVENTORY_BASE64__', $InventoryBase64).Replace('__GENERATED_ON__', $GeneratedLabel)
 }
 
+function Get-AzSandboxDashboardHtml {
+    <#
+    .SYNOPSIS
+        Builds the self-contained HTML sandbox inventory dashboard and returns it as a string.
+    .DESCRIPTION
+        Produces the same dashboard as Export-AzSandboxDashboard but returns the HTML
+        instead of writing a file, so a web endpoint can serve it live.
+    .PARAMETER SubscriptionId
+        Azure subscription IDs to include. Defaults to the active Azure context.
+    .EXAMPLE
+        Get-AzSandboxDashboardHtml
+    .OUTPUTS
+        System.String
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string[]]$SubscriptionId = @()
+    )
+
+    $Inventory = @(Get-AzSandbox -SubscriptionId $SubscriptionId)
+    return ConvertTo-AzSandboxDashboardHtml -Inventory $Inventory
+}
+
 function Export-AzSandboxDashboard {
     <#
     .SYNOPSIS
@@ -911,8 +936,7 @@ function Export-AzSandboxDashboard {
         [string[]]$SubscriptionId = @()
     )
 
-    $Inventory = @(Get-AzSandbox -SubscriptionId $SubscriptionId)
-    $Html = ConvertTo-AzSandboxDashboardHtml -Inventory $Inventory
+    $Html = Get-AzSandboxDashboardHtml -SubscriptionId $SubscriptionId
     $ParentPath = Split-Path -Path $Path -Parent
     if (-not [string]::IsNullOrWhiteSpace($ParentPath)) {
         New-Item -ItemType Directory -Path $ParentPath -Force | Out-Null
@@ -1584,6 +1608,7 @@ Export-ModuleMember -Function @(
     'Connect-AzSandbox'
     'Export-AzSandboxDashboard'
     'Get-AzSandbox'
+    'Get-AzSandboxDashboardHtml'
     'Invoke-AzSandboxApprovedDeletion'
     'Invoke-AzSandboxCleanupAudit'
     'New-AzSandbox'

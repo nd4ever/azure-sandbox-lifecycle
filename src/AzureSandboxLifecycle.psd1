@@ -19,6 +19,7 @@
         'Connect-AzSandbox'
         'Export-AzSandboxDashboard'
         'Get-AzSandbox'
+        'Get-AzSandboxDashboardHtml'
         'Invoke-AzSandboxApprovedDeletion'
         'Invoke-AzSandboxCleanupAudit'
         'New-AzSandbox'
