@@ -20,6 +20,8 @@
     Verified Communication Services sender address.
 .PARAMETER ApprovalBaseUrl
     Base URL of the approval Function app.
+.PARAMETER TeamsWorkflowUrl
+    Optional Power Automate HTTP trigger URL used to send owner-specific Teams notifications.
 .PARAMETER ResourceGroupName
     Resource group for the Automation Account.
 .PARAMETER RuntimeEnvironmentName
@@ -38,6 +40,7 @@ param(
     [Parameter(Mandatory = $true)][securestring]$AcsConnectionString,
     [Parameter(Mandatory = $true)][string]$AcsSenderAddress,
     [Parameter(Mandatory = $true)][string]$ApprovalBaseUrl,
+    [Parameter(Mandatory = $false)][securestring]$TeamsWorkflowUrl,
     [Parameter(Mandatory = $false)][string]$ResourceGroupName = 'rg-sbx-approval',
     [Parameter(Mandatory = $false)][string]$RuntimeEnvironmentName = 'sandbox-powershell-7-2',
     [Parameter(Mandatory = $false)][int]$NotifyWithinDays = 7
@@ -55,7 +58,7 @@ if ($PSCmdlet.ShouldProcess($AutomationAccountName, 'Deploy Automation Account a
     $signingSecretValue = ConvertFrom-SecureString -SecureString $SigningSecret -AsPlainText
     $acsConnectionStringValue = ConvertFrom-SecureString -SecureString $AcsConnectionString -AsPlainText
 
-    New-AzDeployment -Name "sbx-automation-$(Get-Date -Format 'yyyyMMddHHmmss')" -Location $Location -TemplateFile $templateFile -TemplateParameterObject @{
+    $templateParameters = @{
         location             = $Location
         resourceGroupName    = $ResourceGroupName
         automationAccountName = $AutomationAccountName
@@ -64,7 +67,15 @@ if ($PSCmdlet.ShouldProcess($AutomationAccountName, 'Deploy Automation Account a
         acsConnectionString  = $acsConnectionStringValue
         acsSenderAddress     = $AcsSenderAddress
         approvalBaseUrl      = $ApprovalBaseUrl
-    } -ErrorAction Stop | Out-Null
+    }
+    if ($null -ne $TeamsWorkflowUrl) {
+        $teamsWorkflowUrlValue = ConvertFrom-SecureString -SecureString $TeamsWorkflowUrl -AsPlainText
+        if (-not [string]::IsNullOrWhiteSpace($teamsWorkflowUrlValue)) {
+            $templateParameters['teamsWorkflowUrl'] = $teamsWorkflowUrlValue
+        }
+    }
+
+    New-AzDeployment -Name "sbx-automation-$(Get-Date -Format 'yyyyMMddHHmmss')" -Location $Location -TemplateFile $templateFile -TemplateParameterObject $templateParameters -ErrorAction Stop | Out-Null
 
     Import-AzAutomationRunbook -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutomationAccountName -Name $runbookName -Type PowerShell72 -Path $runbookPath -Force -Published | Out-Null
 

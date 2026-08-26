@@ -35,6 +35,10 @@ param acsSenderAddress string
 @description('Base URL of the approval Function app, e.g. https://fn-sbx-approval-xxxx.azurewebsites.net.')
 param approvalBaseUrl string
 
+@description('Optional Power Automate HTTP trigger URL used to send owner-specific Teams notifications.')
+@secure()
+param teamsWorkflowUrl string?
+
 @description('Role granted to the Automation identity on this subscription. Defaults to Reader (read-only; extensions are applied by the Function app).')
 param roleDefinitionId string = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')
 
@@ -56,6 +60,7 @@ module automation './modules/automation-account.bicep' = {
     acsConnectionString: acsConnectionString
     acsSenderAddress: acsSenderAddress
     approvalBaseUrl: approvalBaseUrl
+    teamsWorkflowUrl: teamsWorkflowUrl
   }
 }
 

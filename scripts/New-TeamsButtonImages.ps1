@@ -71,8 +71,17 @@ if (-not (Test-Path -LiteralPath $OutputDirectory)) {
 
 $green = New-SandboxButtonBase64 -Text 'Approve deletion' -HexColor '#107C10'
 $red = New-SandboxButtonBase64 -Text 'Reject' -HexColor '#A4262C'
+$extend = New-SandboxButtonBase64 -Text 'Extend 30 Days' -HexColor '#107C10'
+$delete = New-SandboxButtonBase64 -Text 'Delete Sandbox' -HexColor '#A4262C'
 
 Set-Content -Path (Join-Path $OutputDirectory 'btn-green.txt') -Value $green -NoNewline
 Set-Content -Path (Join-Path $OutputDirectory 'btn-red.txt') -Value $red -NoNewline
+Set-Content -Path (Join-Path $OutputDirectory 'btn-extend-30-days.txt') -Value $extend -NoNewline
+Set-Content -Path (Join-Path $OutputDirectory 'btn-delete-sandbox.txt') -Value $delete -NoNewline
 
-[pscustomobject]@{ GreenLength = $green.Length; RedLength = $red.Length }
+[pscustomobject]@{
+    GreenLength        = $green.Length
+    RedLength          = $red.Length
+    Extend30DaysLength = $extend.Length
+    DeleteSandboxLength = $delete.Length
+}

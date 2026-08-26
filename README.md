@@ -291,10 +291,10 @@ sandbox simply stays flagged on the dashboard for a human to review — nothing 
 deleted on a timer. Daily reminders stop after the sandbox has been expired for
 the configured notification window (seven days by default).
 
-The owner notice offers two signed choices: a green **Extend 30 days** action
-(`GET /api/extend`) and a red **Delete now** action (`GET /api/approve`). Delete
-opens a confirmation page warning that all resources in the resource group will
-be removed, and only the confirming click deletes anything.
+The owner notice offers two signed choices: a green **Extend 30 Days** action
+(`GET /api/extend`) and a red **Delete Sandbox** action (`GET /api/approve`).
+Delete opens a confirmation page warning that all resources in the resource
+group will be removed, and only the confirming click deletes anything.
 
 The runbook has no repository module dependency. The Automation template creates
 a custom PowerShell 7.2 Runtime Environment with `Az 11.2.0` and
@@ -302,8 +302,13 @@ a custom PowerShell 7.2 Runtime Environment with `Az 11.2.0` and
 that environment. The runbook authenticates with the account's managed
 identity, queries Azure Resource Graph, mints the same HMAC-signed token the
 Function app validates, and sends the email through Azure Communication
-Services. The owner's click lands on the Function app's `GET /api/extend`
-endpoint, which validates the token and adds 30 days to
+Services. When `SandboxTeamsWorkflowUrl` is configured, the runbook also sends
+an Adaptive Card to a Power Automate HTTP trigger. The payload supplies
+`recipientUpn` from `sandbox-lifecycle_owner` and the card as the first item in
+`attachments`. Configure the Microsoft Teams action as **Flow bot**, **Chat with
+Flow bot**, with `recipientUpn` as the recipient and the first attachment's
+`content` as the Adaptive Card. The owner's click lands on the Function app's
+`GET /api/extend` endpoint, which validates the token and adds 30 days to
 `sandbox-lifecycle_expiresOn`.
 
 Provision the Automation Account in the same resource group as the Function
@@ -318,13 +323,15 @@ and daily schedule, then publish the runbook:
   -SigningSecret (Read-Host -AsSecureString 'Signing secret') `
   -AcsConnectionString (Read-Host -AsSecureString 'ACS connection string') `
   -AcsSenderAddress 'donotreply@<your-domain>.azurecomm.net' `
-  -ApprovalBaseUrl 'https://<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>.azurewebsites.net'
+  -ApprovalBaseUrl 'https://<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>.azurewebsites.net' `
+  -TeamsWorkflowUrl (Read-Host -AsSecureString 'Power Automate workflow URL')
 ```
 
 The default resource group is `rg-sbx-approval`. Override `-ResourceGroupName`
 when the solution uses a different resource group. The default Runtime
 Environment name is `sandbox-powershell-7-2`; override
-`-RuntimeEnvironmentName` when needed.
+`-RuntimeEnvironmentName` when needed. `-TeamsWorkflowUrl` is optional and is
+stored as the encrypted `SandboxTeamsWorkflowUrl` Automation variable.
 
 The Automation identity only needs **Reader** on the subscription; the extension
 tag write is performed by the Function app's identity, not the runbook.

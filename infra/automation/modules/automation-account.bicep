@@ -30,6 +30,10 @@ param acsSenderAddress string
 @description('Base URL of the approval Function app, e.g. https://fn-sbx-approval-xxxx.azurewebsites.net.')
 param approvalBaseUrl string
 
+@description('Optional Power Automate HTTP trigger URL used to send owner-specific Teams notifications.')
+@secure()
+param teamsWorkflowUrl string?
+
 @description('First run time for the daily schedule (UTC, ISO 8601). Defaults to one hour after deployment.')
 param scheduleStartTime string = dateTimeAdd(utcNow(), 'PT1H')
 
@@ -106,6 +110,15 @@ resource approvalBaseUrlVar 'Microsoft.Automation/automationAccounts/variables@2
   properties: {
     isEncrypted: false
     value: '"${approvalBaseUrl}"'
+  }
+}
+
+resource teamsWorkflowUrlVar 'Microsoft.Automation/automationAccounts/variables@2023-11-01' = if (!empty(teamsWorkflowUrl)) {
+  parent: automationAccount
+  name: 'SandboxTeamsWorkflowUrl'
+  properties: {
+    isEncrypted: true
+    value: '"${teamsWorkflowUrl ?? ''}"'
   }
 }
 

@@ -373,14 +373,52 @@ Describe 'Invoke-AzSandboxApprovedDeletion' -Tag 'Unit' {
 }
 
 Describe 'Send-SandboxExpiryNotice owner actions' -Tag 'Unit' {
-    It 'Uses the approved labels and colors for owner action buttons' {
+    BeforeAll {
         $RunbookPath = Join-Path $PSScriptRoot '../automation/runbooks/Send-SandboxExpiryNotice.ps1'
-        $RunbookSource = Get-Content -LiteralPath $RunbookPath -Raw
+        $script:RunbookSource = Get-Content -LiteralPath $RunbookPath -Raw
+    }
 
-        $RunbookSource.Contains('>Extend $ExtensionDays Days</a>') | Should -BeTrue
-        $RunbookSource.Contains('>Delete Sandbox</a>') | Should -BeTrue
-        $RunbookSource.Contains('background:#107c10') | Should -BeTrue
-        $RunbookSource.Contains('background:#a4262c') | Should -BeTrue
+    It 'Uses the approved labels and colors for owner action buttons' {
+        $script:RunbookSource.Contains('>Extend $ExtensionDays Days</a>') | Should -BeTrue
+        $script:RunbookSource.Contains('>Delete Sandbox</a>') | Should -BeTrue
+        $script:RunbookSource.Contains('background:#107c10') | Should -BeTrue
+        $script:RunbookSource.Contains('background:#a4262c') | Should -BeTrue
+    }
+
+    It 'Routes the Teams card to the owner UPN through the configured workflow' {
+        $script:RunbookSource.Contains("VariableName 'SandboxTeamsWorkflowUrl'") | Should -BeTrue
+        $script:RunbookSource.Contains('recipientUpn = $OwnerUpn') | Should -BeTrue
+        $script:RunbookSource.Contains("type         = 'message'") | Should -BeTrue
+        $script:RunbookSource.Contains("contentType = 'application/vnd.microsoft.card.adaptive'") | Should -BeTrue
+        $script:RunbookSource.Contains('content     = $adaptiveCard') | Should -BeTrue
+        $script:RunbookSource.Contains("TeamsNotificationStatus = $teamsNotificationStatus") | Should -BeTrue
+    }
+
+    It 'Uses clickable image buttons with approved Teams owner labels and colors' {
+        $script:RunbookSource.Contains("type    = 'ColumnSet'") | Should -BeTrue
+        $script:RunbookSource.Contains('altText      = "Extend $ExtensionDays Days"') | Should -BeTrue
+        $script:RunbookSource.Contains("altText      = 'Delete Sandbox'") | Should -BeTrue
+        $script:RunbookSource.Contains('url          = "data:image/png;base64,$TeamsExtendButtonPng"') | Should -BeTrue
+        $script:RunbookSource.Contains('url          = "data:image/png;base64,$TeamsDeleteButtonPng"') | Should -BeTrue
+        $script:RunbookSource.Contains('selectAction = [ordered]@{ type = ''Action.OpenUrl''; title = "Extend $ExtensionDays Days"; url = $ExtendUrl }') | Should -BeTrue
+        $script:RunbookSource.Contains("selectAction = [ordered]@{ type = 'Action.OpenUrl'; title = 'Delete Sandbox'; url = `$DeleteUrl }") | Should -BeTrue
+        $script:RunbookSource.Contains("style = 'positive'") | Should -BeFalse
+        $script:RunbookSource.Contains("style = 'destructive'") | Should -BeFalse
+    }
+
+    It 'Keeps the owner Teams button assets reproducible' {
+        $ButtonGeneratorPath = Join-Path $PSScriptRoot '../scripts/New-TeamsButtonImages.ps1'
+        $ButtonGeneratorSource = Get-Content -LiteralPath $ButtonGeneratorPath -Raw
+
+        $ButtonGeneratorSource.Contains("-Text 'Extend 30 Days' -HexColor '#107C10'") | Should -BeTrue
+        $ButtonGeneratorSource.Contains("-Text 'Delete Sandbox' -HexColor '#A4262C'") | Should -BeTrue
+        $ButtonGeneratorSource.Contains("'btn-extend-30-days.txt'") | Should -BeTrue
+        $ButtonGeneratorSource.Contains("'btn-delete-sandbox.txt'") | Should -BeTrue
+    }
+
+    It 'Supports isolating delivery to one resource group' {
+        $script:RunbookSource.Contains('[string]$ResourceGroupName') | Should -BeTrue
+        $script:RunbookSource.Contains('[string]::Equals([string]$sandbox.name, $ResourceGroupName') | Should -BeTrue
     }
 }
 
