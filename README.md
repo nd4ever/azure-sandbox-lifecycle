@@ -20,6 +20,7 @@ self-contained HTML dashboard.
 * Restrict deployments to approved Azure regions with Azure Policy
 * Extend active or expired sandboxes without recreating resources
 * Email owners a self-service extension link before expiry via an Azure Automation runbook
+* Send owner-targeted Teams actions through a Power Automate Flow bot
 * Delete expired sandboxes after a configurable grace period
 * Export a searchable, filterable inventory dashboard with CSV download
 * Serve the inventory dashboard live from the approval Function app (optional)
@@ -64,6 +65,7 @@ Local commands and module parameters:
 | `<acs-connection-string>`                  | `-AcsConnectionString`                                   |
 | `<managed-domain>.azurecomm.net`           | `-AcsSenderAddress`                                       |
 | `<teams-webhook-url>`                       | `-TeamsWebhookUrl`                                        |
+| `<teams-workflow-url>`                      | `-TeamsWorkflowUrl` for direct owner notifications        |
 | `<STRONG_SHARED_SECRET>`                    | `-SigningSecret` and the Function `SANDBOX_SIGNING_SECRET`|
 | `<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>`       | Function app name and `-ApprovalBaseUrl`                 |
 | `<BUDGET_WEBHOOK_URL>`                      | `New-AzSandbox -BudgetWebhookUrl`                        |

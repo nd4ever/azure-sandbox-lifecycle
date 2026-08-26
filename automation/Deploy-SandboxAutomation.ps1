@@ -80,15 +80,23 @@ if ($PSCmdlet.ShouldProcess($AutomationAccountName, 'Deploy Automation Account a
     Import-AzAutomationRunbook -ResourceGroupName $ResourceGroupName -AutomationAccountName $AutomationAccountName -Name $runbookName -Type PowerShell72 -Path $runbookPath -Force -Published | Out-Null
 
     $runbookResourcePath = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Automation/automationAccounts/$AutomationAccountName/runbooks/$runbookName?api-version=2024-10-23"
-    $runtimePayload = @{ properties = @{ runbookType = 'PowerShell'; runtimeEnvironment = $RuntimeEnvironmentName } } | ConvertTo-Json -Depth 3 -Compress
-    $runtimeAssociationResponse = $null
-    foreach ($attempt in 1..5) {
-        $runtimeAssociationResponse = Invoke-AzRestMethod -Path $runbookResourcePath -Method PATCH -Payload $runtimePayload
-        if ($runtimeAssociationResponse.StatusCode -in 200, 201) { break }
-        if ($attempt -lt 5) { Start-Sleep -Seconds 5 }
+    $runbookResponse = Invoke-AzRestMethod -Path $runbookResourcePath -Method GET
+    if ($runbookResponse.StatusCode -ne 200) {
+        throw "Runbook lookup failed with HTTP $($runbookResponse.StatusCode): $($runbookResponse.Content)"
     }
-    if ($runtimeAssociationResponse.StatusCode -notin 200, 201) {
-        throw "Runtime Environment association failed with HTTP $($runtimeAssociationResponse.StatusCode): $($runtimeAssociationResponse.Content)"
+
+    $runbookResource = $runbookResponse.Content | ConvertFrom-Json
+    if ($runbookResource.properties.runtimeEnvironment -ne $RuntimeEnvironmentName) {
+        $runtimePayload = @{ properties = @{ runbookType = 'PowerShell'; runtimeEnvironment = $RuntimeEnvironmentName } } | ConvertTo-Json -Depth 3 -Compress
+        $runtimeAssociationResponse = $null
+        foreach ($attempt in 1..5) {
+            $runtimeAssociationResponse = Invoke-AzRestMethod -Path $runbookResourcePath -Method PATCH -Payload $runtimePayload
+            if ($runtimeAssociationResponse.StatusCode -in 200, 201) { break }
+            if ($attempt -lt 5) { Start-Sleep -Seconds 5 }
+        }
+        if ($runtimeAssociationResponse.StatusCode -notin 200, 201) {
+            throw "Runtime Environment association failed with HTTP $($runtimeAssociationResponse.StatusCode): $($runtimeAssociationResponse.Content)"
+        }
     }
 
     $scheduleName = 'daily-expiry-notice'

@@ -422,6 +422,27 @@ Describe 'Send-SandboxExpiryNotice owner actions' -Tag 'Unit' {
     }
 }
 
+Describe 'Deploy-SandboxAutomation runtime association' -Tag 'Unit' {
+    BeforeAll {
+        $DeploymentScriptPath = Join-Path $PSScriptRoot '../automation/Deploy-SandboxAutomation.ps1'
+        $script:DeploymentScriptSource = Get-Content -LiteralPath $DeploymentScriptPath -Raw
+        $AutomationModulePath = Join-Path $PSScriptRoot '../infra/automation/modules/automation-account.bicep'
+        $script:AutomationModuleSource = Get-Content -LiteralPath $AutomationModulePath -Raw
+    }
+
+    It 'Checks the existing Runtime Environment before applying an association' {
+        $script:DeploymentScriptSource.Contains('$runbookResponse = Invoke-AzRestMethod -Path $runbookResourcePath -Method GET') | Should -BeTrue
+        $script:DeploymentScriptSource.Contains('if ($runbookResource.properties.runtimeEnvironment -ne $RuntimeEnvironmentName)') | Should -BeTrue
+        $script:DeploymentScriptSource.Contains('Invoke-AzRestMethod -Path $runbookResourcePath -Method PATCH -Payload $runtimePayload') | Should -BeTrue
+    }
+
+    It 'Clears the Teams workflow variable when Teams delivery is disabled' {
+        $script:AutomationModuleSource.Contains("resource teamsWorkflowUrlVar 'Microsoft.Automation/automationAccounts/variables@2023-11-01' = {") | Should -BeTrue
+        $script:AutomationModuleSource.Contains("resource teamsWorkflowUrlVar 'Microsoft.Automation/automationAccounts/variables@2023-11-01' = if") | Should -BeFalse
+        $script:AutomationModuleSource.Contains('value: ''"${teamsWorkflowUrl ?? ''''}"''') | Should -BeTrue
+    }
+}
+
 AfterAll {
     Remove-Module AzureSandboxLifecycle -Force -ErrorAction SilentlyContinue
 }

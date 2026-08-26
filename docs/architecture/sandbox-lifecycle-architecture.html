@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Azure Sandbox Lifecycle — Approval &amp; Deletion Architecture</title>
+<html><head><meta charset="utf-8"><title>Azure Sandbox Lifecycle - Owner Notification &amp; Deletion Architecture</title>
 <style>
   body { margin:0; font-family:'Segoe UI',Arial,sans-serif; background:#fff; }
   .canvas { position:relative; width:1520px; height:1060px; margin:12px auto; }
@@ -21,8 +21,8 @@
   .legend { width:1520px; margin:0 auto 20px; font-size:11px; color:#556; text-align:center; }
 </style></head>
 <body>
-  <h1>Azure Sandbox Lifecycle — Approval &amp; Deletion Architecture</h1>
-  <div class="sub">Button-triggered, human-approved deletion of expired sandbox resource groups using managed identities</div>
+  <h1>Azure Sandbox Lifecycle - Owner Notification &amp; Deletion Architecture</h1>
+  <div class="sub">Daily owner notification, self-service extension, and confirmation-gated deletion using managed identities</div>
   <div class="canvas">
     <div class="box" style="left:40px;top:60px;width:1440px;height:150px;background:#FCE4EC;border:2px solid #C62828;"><div class="box-title" style="color:#C62828;">Owner interaction (outside Azure)</div></div>
     <div class="box" style="left:40px;top:250px;width:1440px;height:780px;background:#F0F7FF;border:2px solid #6C8EBF;"><div class="box-title" style="color:#6C8EBF;">Azure — Management-Subscription</div></div>
@@ -40,8 +40,12 @@
         </marker>
       </defs>
     <polyline points="410,401 386,401 230,401 230,401 206,401" fill="none" stroke="#1565C0" stroke-width="2"  marker-end="url(#arrow)" stroke-linejoin="round"/>
-    <polyline points="178,360 178,336 178,198 1345,198 1345,174" fill="none" stroke="#5B6B7B" stroke-width="2"  marker-end="url(#arrow)" stroke-linejoin="round"/>
-    <text x="762" y="192" class="edge-label">expiry notice</text>
+    <polyline points="178,360 178,336 178,84 1345,84 1345,108" fill="none" stroke="#5B6B7B" stroke-width="2"  marker-end="url(#arrow)" stroke-linejoin="round"/>
+    <text x="762" y="78" class="edge-label">email notice</text>
+    <polyline points="438,360 438,336 438,141 976,141 1000,141" fill="none" stroke="#6264A7" stroke-width="2"  marker-end="url(#arrow)" stroke-linejoin="round"/>
+    <text x="707" y="135" class="edge-label">Adaptive Card + owner UPN</text>
+    <polyline points="1190,141 1214,141 1246,141 1246,141 1270,141" fill="none" stroke="#6264A7" stroke-width="2"  marker-end="url(#arrow)" stroke-linejoin="round"/>
+    <text x="1246" y="135" class="edge-label">Teams chat</text>
     <polyline points="1345,174 1345,198 1345,336 618,336 618,360" fill="none" stroke="#107C10" stroke-width="3"  marker-end="url(#arrow)" stroke-linejoin="round"/>
     <text x="982" y="330" class="edge-label">Extend or Delete + Confirm</text>
     <polyline points="646,401 670,401 746,401 746,401 770,401" fill="none" stroke="#5B6B7B" stroke-width="2"  marker-end="url(#arrow)" stroke-linejoin="round"/>
@@ -60,6 +64,7 @@
     <polyline points="1150,601 1126,601 670,601 670,401 646,401" fill="none" stroke="#E65100" stroke-width="2"  marker-end="url(#arrow)" stroke-linejoin="round"/>
     <text x="670" y="495" class="edge-label">webhook → mark expired</text>
     </svg>
+    <div class="actor" style="left:1000px;top:108px;width:190px;height:66px;">Power Automate Flow bot</div>
     <div class="actor" style="left:1270px;top:108px;width:150px;height:66px;">Sandbox owner</div>
     <div class="icon" style="left:150px;top:360px;width:120px;margin-left:-32px;"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgdmlld0JveD0iMCAwIDE4IDE4Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImU2OTNjODk5LTVmNWQtNDc4ZC1iOTc5LWI2ODg4YTI2NzAzMCIgeDE9IjcuNzYyIiB5MT0iMi40NzYiIHgyPSI3Ljc2MiIgeTI9IjE1LjM5MSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMC4wMDIiIHN0b3AtY29sb3I9IiNhNjdhZjQiIC8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNzczYWRjIiAvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IGlkPSJlYzdhMDE5MS02OTAzLTRiM2MtOWY3NC03OTkxMTJiOGVlMDkiIHgxPSIxMy45MjYiIHkxPSI3LjM3NiIgeDI9IjEzLjkyNiIgeTI9IjE1LjUyNCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iI2MzZjFmZiIgLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM1MGU2ZmYiIC8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PGcgaWQ9ImJlYWI2NzIxLWE4ZTMtNDQ5My1iOTBiLTM1MWFiOGM3MTVkYiI+PHBhdGggZD0iTS45LDIuNDc2SDE0LjYyM2EuODQ0Ljg0NCwwLDAsMSwuOS43NzR2OS4zODZhLjg0Ni44NDYsMCwwLDEtLjkuNzc0SDkuMDA3YS4xNjguMTY4LDAsMCwwLS4wOTEuMDI3bC0yLjg4MSwxLjlhLjMuMywwLDAsMS0uNDgxLS4yMDVWMTMuNTM5YS4xNDEuMTQxLDAsMCwwLS4xNS0uMTI5SC45YS44NDUuODQ1LDAsMCwxLS45LS43NzRWMy4yNUEuODQ2Ljg0NiwwLDAsMSwuOSwyLjQ3NloiIGZpbGw9InVybCgjZTY5M2M4OTktNWY1ZC00NzhkLWI5NzktYjY4ODhhMjY3MDMwKSIgLz48cGF0aCBkPSJNMTEuMDMxLDYuNjYxYTEuMDI1LDEuMDI1LDAsMSwxLTEuMDI1LDEuMDI1QTEuMDI1LDEuMDI1LDAsMCwxLDExLjAzMSw2LjY2MVpNNi43MzcsNy43QTEuMDI1LDEuMDI1LDAsMSwwLDcuNzYyLDYuNjcsMS4wMjUsMS4wMjUsMCwwLDAsNi43MzcsNy43Wm0tMy4yNywwQTEuMDI1LDEuMDI1LDAsMSwwLDQuNDkyLDYuNjcsMS4wMjUsMS4wMjUsMCwwLDAsMy40NjcsNy43WiIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC44IiAvPjxjaXJjbGUgY3g9IjEzLjkyNiIgY3k9IjExLjQ1IiByPSI0LjA3NCIgZmlsbD0idXJsKCNlYzdhMDE5MS02OTAzLTRiM2MtOWY3NC03OTkxMTJiOGVlMDkpIiAvPjxwYXRoIGQ9Ik0xNi4xNjQsMTMuNjM4bC0uNTM3LS44MTRhLjMuMywwLDAsMC0uNC0uMWwtLjM4NS4yMDdhLjE5NC4xOTQsMCwwLDEtLjIzLS4wMzQsNiw2LDAsMCwxLS42ODktLjgyOGwtLjMwOC0uNTIzYTUuOTQ1LDUuOTQ1LDAsMCwxLS4zNjUtMS4wMTQuMi4yLDAsMCwxLC4wODctLjIxNmwuMzczLS4yMjdhLjMuMywwLDAsMCwuMTE0LS4zOUwxMy40LDguODI0YS4yODUuMjg1LDAsMCwwLS4zNzItLjEzMywxLjcyMiwxLjcyMiwwLDAsMC0uNzguOTcxYy0uMzUyLjgxNS4yOCwxLjc3NC43NDcsMi41OUgxM2MuNDY3LjgxNi45NzYsMS44NDYsMS44NTYsMS45NTZhMS43MTksMS43MTksMCwwLDAsMS4yMzItLjE4MkEuMjgzLjI4MywwLDAsMCwxNi4xNjQsMTMuNjM4WiIgZmlsbD0iIzAwNzhkNCIgLz48L2c+4oCLCjwvc3ZnPg==" width="56" height="56" alt="Azure Communication
 Services (Email)"/><div class="icon-label">Azure Communication
@@ -94,6 +99,6 @@ budget → cleanup</div></div>
   </div>
   <div class="legend">
     Solid arrows show request/data flow &nbsp;&bull;&nbsp; dashed arrows show governance applied at provisioning time.
-    HMAC-signed, time-limited approval tokens; deletion runs only after a human confirms.
+    HMAC-signed, time-limited owner-action tokens; deletion runs only after the owner confirms.
   </div>
 </body></html>

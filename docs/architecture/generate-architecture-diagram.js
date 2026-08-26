@@ -211,7 +211,7 @@ class Diagram {
   </div>
   <div class="legend">
     Solid arrows show request/data flow &nbsp;&bull;&nbsp; dashed arrows show governance applied at provisioning time.
-    HMAC-signed, time-limited approval tokens; deletion runs only after a human confirms.
+    HMAC-signed, time-limited owner-action tokens; deletion runs only after the owner confirms.
   </div>
 </body></html>`;
   }
@@ -226,13 +226,14 @@ class Diagram {
 
 function generate() {
   const d = new Diagram(
-    'Azure Sandbox Lifecycle — Approval & Deletion Architecture',
-    'Button-triggered, human-approved deletion of expired sandbox resource groups using managed identities',
+    'Azure Sandbox Lifecycle - Owner Notification & Deletion Architecture',
+    'Daily owner notification, self-service extension, and confirmation-gated deletion using managed identities',
     1520, 1060
   );
 
   // --- Human owner (outside Azure) ---
   d.container('ext', 'Owner interaction (outside Azure)', 40, 60, 1440, 150, 'onPrem');
+  d.actor('flowbot', 'Power Automate Flow bot', 1000, 108, 190, 66);
   d.actor('owner', 'Sandbox owner', 1270, 108, 150, 66);
 
   // --- Azure ---
@@ -273,7 +274,9 @@ function generate() {
 
   // --- Flows ---
   d.connect('automation', 'acs',   { fromSide: 'left', toSide: 'right', color: '#1565C0' });
-  d.connect('acs', 'owner',        { fromSide: 'top', toSide: 'bottom', label: 'expiry notice' });
+  d.connect('acs', 'owner',        { fromSide: 'top', toSide: 'top', label: 'email notice' });
+  d.connect('automation', 'flowbot', { fromSide: 'top', toSide: 'left', label: 'Adaptive Card + owner UPN', color: '#6264A7' });
+  d.connect('flowbot', 'owner',    { fromSide: 'right', toSide: 'left', label: 'Teams chat', color: '#6264A7' });
   d.connect('owner', 'func',       { fromSide: 'bottom', toSide: 'top', label: 'Extend or Delete + Confirm', color: '#107C10', width: 3 });
   d.connect('func', 'storage',     { fromSide: 'right', toSide: 'left', label: 'host storage' });
   d.connect('func', 'sysMi',       { fromSide: 'right', toSide: 'left', label: 'uses' });

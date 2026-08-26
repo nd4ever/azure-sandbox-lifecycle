@@ -113,7 +113,7 @@ resource approvalBaseUrlVar 'Microsoft.Automation/automationAccounts/variables@2
   }
 }
 
-resource teamsWorkflowUrlVar 'Microsoft.Automation/automationAccounts/variables@2023-11-01' = if (!empty(teamsWorkflowUrl)) {
+resource teamsWorkflowUrlVar 'Microsoft.Automation/automationAccounts/variables@2023-11-01' = {
   parent: automationAccount
   name: 'SandboxTeamsWorkflowUrl'
   properties: {
