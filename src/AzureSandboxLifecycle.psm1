@@ -296,7 +296,7 @@ function New-AzSandbox {
 
         [Parameter(Mandatory = $false)]
         [ValidateRange(1, 365)]
-        [int]$ExpiresInDays = 7,
+        [int]$ExpiresInDays = 30,
 
         [Parameter(Mandatory = $false)]
         [ValidateRange(1, 1000000)]
@@ -416,7 +416,7 @@ function Set-AzSandboxExpiration {
     .PARAMETER SubscriptionId
         Azure subscription ID. Defaults to the active Azure context.
     .EXAMPLE
-        Set-AzSandboxExpiration -Name 'rg-sbx-api-001' -AdditionalDays 7
+        Set-AzSandboxExpiration -Name 'rg-sbx-api-001' -AdditionalDays 30
     .OUTPUTS
         System.Management.Automation.PSCustomObject
     #>
@@ -429,7 +429,7 @@ function Set-AzSandboxExpiration {
 
         [Parameter(Mandatory = $false)]
         [ValidateRange(1, 365)]
-        [int]$AdditionalDays = 7,
+        [int]$AdditionalDays = 30,
 
         [Parameter(Mandatory = $false)]
         [string]$SubscriptionId
@@ -1002,7 +1002,7 @@ function New-AzSandboxApprovalToken {
     .PARAMETER AuditId
         Audit correlation identifier.
     .PARAMETER Action
-        Authorized action: approve or reject.
+        Authorized action: approve, reject, or extend.
     .PARAMETER Candidate
         Sandbox records the token authorizes.
     .PARAMETER Secret
@@ -1023,7 +1023,7 @@ function New-AzSandboxApprovalToken {
         [string]$AuditId,
 
         [Parameter(Mandatory = $true)]
-        [ValidateSet('approve', 'reject')]
+        [ValidateSet('approve', 'reject', 'extend')]
         [string]$Action,
 
         [Parameter(Mandatory = $true)]

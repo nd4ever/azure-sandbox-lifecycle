@@ -97,7 +97,7 @@ if ($Request.Method -eq 'GET') {
         $Body = @"
 <p>You are about to <strong>permanently delete</strong> the following resource group(s) for audit <strong>$(& $Encode $Payload.aid)</strong>:</p>
 <ul>$RgListItems</ul>
-<p style="color:#a4262c;font-weight:600;">This action cannot be undone.</p>
+<p style="color:#a4262c;font-weight:600;">This will delete all resources in the resource group. This action cannot be undone.</p>
 <form method="post" action="?token=$EncodedToken" style="display:inline;">
   <button type="submit" style="background:#107c10;color:#fff;border:0;padding:10px 18px;border-radius:4px;font-weight:600;cursor:pointer;">Confirm deletion</button>
 </form>

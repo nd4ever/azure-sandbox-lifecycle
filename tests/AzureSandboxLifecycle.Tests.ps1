@@ -298,6 +298,15 @@ Describe 'New-AzSandboxApprovalToken' -Tag 'Unit' {
         @($Payload.rgs).n | Should -Be 'expired'
     }
 
+    It 'Round-trips an extend payload for the owner self-service link' {
+        $Candidate = [pscustomobject]@{ SubscriptionId = 'sub-one'; ResourceGroupName = 'rg-sbx-demo' }
+        $Token = New-AzSandboxApprovalToken -AuditId 'audit-2' -Action 'extend' -Candidate @($Candidate) -Secret 'shared-secret'
+        $Payload = Test-AzSandboxApprovalToken -Token $Token -Secret 'shared-secret'
+
+        $Payload.act | Should -Be 'extend'
+        @($Payload.rgs).n | Should -Be 'rg-sbx-demo'
+    }
+
     It 'Rejects a tampered token' {
         $Candidate = [pscustomobject]@{ SubscriptionId = 'sub-one'; ResourceGroupName = 'expired' }
         $Token = New-AzSandboxApprovalToken -AuditId 'audit-1' -Action 'approve' -Candidate @($Candidate) -Secret 'shared-secret'
