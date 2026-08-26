@@ -162,7 +162,12 @@ resourcecontainers
 
 $graphArgs = @{ Query = $query; First = 1000 }
 if ($SubscriptionId.Count -gt 0) { $graphArgs['Subscription'] = $SubscriptionId }
-$sandboxes = Search-AzGraph @graphArgs
+$sandboxes = [System.Collections.Generic.List[object]]::new()
+do {
+    $page = Search-AzGraph @graphArgs
+    foreach ($sandbox in $page) { $sandboxes.Add($sandbox) }
+    $graphArgs['SkipToken'] = $page.SkipToken
+} while (-not [string]::IsNullOrWhiteSpace($page.SkipToken))
 
 $now = [DateTimeOffset]::UtcNow
 $baseUrl = $ApprovalBaseUrl.TrimEnd('/')
@@ -179,7 +184,7 @@ foreach ($sandbox in $sandboxes) {
         [ref]$expires)
 
     if (-not $parsed -or [string]::IsNullOrWhiteSpace($owner)) { continue }
-    if ($expires -gt $now.AddDays($NotifyWithinDays)) { continue }
+    if ($expires -gt $now.AddDays($NotifyWithinDays) -or $expires -lt $now.AddDays(-$NotifyWithinDays)) { continue }
 
     $daysRemaining = [Math]::Ceiling(($expires - $now).TotalDays)
     $extendToken = New-SandboxToken -SubscriptionId ([string]$sandbox.subscriptionId) -ResourceGroup ([string]$sandbox.name) -Action 'extend' -Secret $SigningSecret -TtlHours $TokenTtlHours -Now $now

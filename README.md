@@ -1,7 +1,7 @@
 ---
 title: Azure Sandbox Lifecycle
 description: PowerShell and Bicep automation for governed, time-bound Azure sandbox resource groups
-ms.date: 2026-08-25
+ms.date: 2026-08-26
 ms.topic: overview
 ---
 
@@ -23,7 +23,7 @@ self-contained HTML dashboard.
 * Delete expired sandboxes after a configurable grace period
 * Export a searchable, filterable inventory dashboard with CSV download
 * Serve the inventory dashboard live from the approval Function app (optional)
-* Run cleanup through GitHub Actions with workload identity federation (manual dispatch; add a cron schedule to automate)
+* Run owner notifications daily through Azure Automation with managed identity
 * Mark a sandbox for cleanup when its actual spend reaches its budget (optional)
 * Simulate deletion, email an approver, and delete with a managed identity
 
@@ -32,16 +32,17 @@ self-contained HTML dashboard.
 Use PowerShell 7 and install the required Azure modules:
 
 ```powershell
-Install-Module -Name Az.Accounts, Az.ResourceGraph, Az.Resources -Scope CurrentUser
+Install-Module -Name Az.Accounts, Az.Automation, Az.ResourceGraph, Az.Resources -Scope CurrentUser
 ```
 
 The deployment identity needs these roles at the target subscription scope:
 
-| Role                        | Purpose                                      |
-|-----------------------------|----------------------------------------------|
-| Contributor                 | Create and remove sandbox resource groups    |
-| Resource Policy Contributor | Create resource-group policy assignments     |
-| Cost Management Contributor | Create and update resource-group budgets     |
+| Role                                    | Purpose                                             |
+|-----------------------------------------|-----------------------------------------------------|
+| Contributor                             | Create and remove sandbox resource groups           |
+| Resource Policy Contributor             | Create resource-group policy assignments            |
+| Cost Management Contributor             | Create and update resource-group budgets            |
+| Role Based Access Control Administrator | Assign Reader to the Automation managed identity    |
 
 Use narrower custom roles before operating this project in a shared production
 subscription.
@@ -67,20 +68,6 @@ Local commands and module parameters:
 | `<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>`       | Function app name and `-ApprovalBaseUrl`                 |
 | `<BUDGET_WEBHOOK_URL>`                      | `New-AzSandbox -BudgetWebhookUrl`                        |
 | `<managed-identity-client-id>`             | `Remove-AzExpiredSandbox -ManagedIdentityClientId`       |
-
-GitHub Actions — set these under **Settings → Secrets and variables → Actions**:
-
-| Name                             | Type     | Purpose                                    |
-|----------------------------------|----------|--------------------------------------------|
-| `AZURE_CLIENT_ID`                | Variable | OIDC app (client) ID for `azure/login`     |
-| `AZURE_TENANT_ID`                | Variable | Entra tenant ID for `azure/login`          |
-| `AZURE_SUBSCRIPTION_ID`          | Variable | Target subscription for audit and cleanup  |
-| `SANDBOX_ACS_SENDER`             | Variable | Communication Services sender address      |
-| `SANDBOX_APPROVAL_BASE_URL`      | Variable | Approval Function app base URL             |
-| `AZURE_DELETE_IDENTITY_CLIENT_ID`| Variable | Managed identity client ID for deletion    |
-| `SANDBOX_ACS_CONNECTION_STRING`  | Secret   | Communication Services connection string   |
-| `SANDBOX_TEAMS_WEBHOOK_URL`      | Secret   | Teams channel webhook URL                  |
-| `SANDBOX_SIGNING_SECRET`         | Secret   | Shared HMAC secret for approval tokens     |
 
 Approval infrastructure — replace the placeholders in
 [infra/approval/main.sample.bicepparam](infra/approval/main.sample.bicepparam)
@@ -144,52 +131,17 @@ Export-AzSandboxDashboard -Path ./out/sandbox-inventory.html
 Invoke-Item ./out/sandbox-inventory.html
 ```
 
-## Run cleanup in GitHub Actions
+## Preview cleanup locally
 
-The workflow in `.github/workflows/sandbox-cleanup.yml` is triggered manually
-(`workflow_dispatch`). It removes sandboxes after a 24-hour grace period and
-publishes the current dashboard as a workflow artifact. Manual runs default to
-What-If mode; set the **what_if** input to `false` to perform cleanup.
-
-Configure an Entra application with a federated credential for this GitHub
-repository, assign the roles listed above, and add these GitHub Actions
-repository variables:
-
-* `AZURE_CLIENT_ID`
-* `AZURE_TENANT_ID`
-* `AZURE_SUBSCRIPTION_ID`
-
-No client secret is required or stored. To run cleanup automatically, add a
-schedule trigger to the workflow, for example:
-
-```yaml
-on:
-  schedule:
-    - cron: '17 * * * *'  # 17 minutes past every hour
-```
-
-## Audited cleanup with approval
-
-The `sandbox-cleanup-audit` skill adds an approval gate in front of deletion. The
-workflow in `.github/workflows/sandbox-cleanup-audit.yml` runs a simulation that
-lists expired sandboxes, writes an audit record, and emails an approver before
-any resource is removed.
-
-Preview the audit and generate the approval email locally without deleting:
+Run an ad hoc audit to list expired sandboxes, write an audit record, and
+generate an approval message without deleting any resources:
 
 ```powershell
 Invoke-AzSandboxCleanupAudit -GracePeriodHours 24 -AuditPath ./out/audit
 ```
 
-The email is simulated to disk unless you supply a delivery channel. Approved
-deletions authenticate with a user-assigned managed identity:
-
-```powershell
-Remove-AzExpiredSandbox `
-  -GracePeriodHours 24 `
-  -ManagedIdentityClientId '<managed-identity-client-id>' `
-  -Confirm:$false
-```
+The email is simulated to disk unless you supply a delivery channel. The daily
+production path uses the Azure Automation runbook described below.
 
 ### Notifications with Azure Communication Services
 
@@ -222,37 +174,26 @@ falls back to SMTP when an SMTP server is supplied, and otherwise writes the
 email to disk. A Teams webhook URL is optional and posts an adaptive card in
 addition to the email.
 
-The audit workflow gates its delete job behind the `sandbox-deletion-approval`
-GitHub environment, which emails the required reviewers when it pauses. The
-delete job runs on a self-hosted runner labeled `azure` because a user-assigned
-managed identity is only available on Azure-hosted compute. In addition to the
-variables above, configure `AZURE_DELETE_IDENTITY_CLIENT_ID`. For real email
-delivery, add the `SANDBOX_ACS_CONNECTION_STRING` secret and the
-`SANDBOX_ACS_SENDER` variable (or the `SANDBOX_SMTP_SERVER` variable with
-`SANDBOX_SMTP_USERNAME` and `SANDBOX_SMTP_PASSWORD` secrets). For Teams, add the
-`SANDBOX_TEAMS_WEBHOOK_URL` secret. See the skill at
-`.github/skills/sandbox-cleanup-audit/SKILL.md` for details.
-
 ## Button-triggered deletion
 
-An approval Function app lets an approver delete expired sandboxes by clicking a
-button in the Outlook email or Teams card. The button opens a confirmation page,
-and only the confirming click runs the deletion. The Function authenticates with
-its own system-assigned managed identity, so no credentials are shared.
+An approval Function app lets an owner delete expired sandboxes by clicking a
+button in the Outlook email. An ad hoc audit can also post the action to Teams.
+The button opens a confirmation page, and only the confirming click runs the
+deletion. The Function authenticates with its own system-assigned managed
+identity, so no credentials are shared.
 
 How it works:
 
-1. The audit signs a short-lived HMAC token per approval that encodes the exact
-   resource groups, an action (`approve` or `reject`), and an expiry. Supply
-   `-ApprovalBaseUrl` and `-SigningSecret` to embed signed links in the email and
-   Teams card.
+1. The Azure Automation runbook signs a short-lived HMAC token for each owner
+  action. An ad hoc audit creates the same token when `-ApprovalBaseUrl` and
+  `-SigningSecret` are supplied.
 2. The email link and Teams button open `/api/approve` on the Function app. A
    `GET` shows a confirmation page; the `POST` validates the token and deletes.
 3. `Invoke-AzSandboxApprovedDeletion` deletes only the resource groups named in
    the token and re-verifies each still carries the managed tag before removal.
 
-The token is signed and time-limited but replayable until it expires, so keep the
-TTL short (`-ApprovalTtlHours`, default 8).
+The token is signed and time-limited but replayable until it expires. Automation
+owner links default to 72 hours. Ad hoc audit links default to 8 hours.
 
 Provision the Function app, storage, and the managed identity role assignment
 with Bicep. Everything environment-specific is a parameter — copy the sample and
@@ -283,9 +224,10 @@ network access to storage, the Bicep tags the storage account with
 access so the platform can reach the deployment container. Remove those tags if
 your environment does not use that exception convention.
 
-Use the `approvalBaseUrl` output as `SANDBOX_APPROVAL_BASE_URL`, and use the same
-`signingSecret` value for both the Function app setting `SANDBOX_SIGNING_SECRET`
-and the audit's `-SigningSecret`. Then a signed run looks like:
+Use the `approvalBaseUrl` output for the `SandboxApprovalBaseUrl` Automation
+variable. Use the same `signingSecret` value for the Function app setting
+`SANDBOX_SIGNING_SECRET`, the encrypted `SandboxSigningSecret` Automation
+variable, and any ad hoc audit. A signed local audit looks like:
 
 ```powershell
 Invoke-AzSandboxCleanupAudit `
@@ -316,9 +258,9 @@ This provisions an Azure Monitor action group on the budget. When actual spend
 crosses 100 percent, the action group calls the `budgethook` Function, which
 sets `sandbox-lifecycle_expiresOn` to now and records
 `sandbox-lifecycle_flaggedReason = budget-exceeded`. The sandbox then flows
-through the normal cleanup audit, approval, and deletion path, so the human
-approval gate still applies and a cost overage never deletes anything on its
-own. The `token` query value must equal the Function app's
+through the normal owner notification, confirmation, and deletion path, so a
+cost overage never deletes anything on its own. The `token` query value must
+equal the Function app's
 `SANDBOX_SIGNING_SECRET`. Omit `-BudgetWebhookUrl` to keep budget alerts
 email-only.
 
@@ -346,22 +288,27 @@ automatically. An Azure Automation runbook,
 runs on a daily schedule, finds sandboxes at or near expiry, and emails each
 owner a signed link that extends their sandbox by 30 days. If no one acts, the
 sandbox simply stays flagged on the dashboard for a human to review — nothing is
-deleted on a timer.
+deleted on a timer. Daily reminders stop after the sandbox has been expired for
+the configured notification window (seven days by default).
 
 The owner notice offers two signed choices: a green **Extend 30 days** action
 (`GET /api/extend`) and a red **Delete now** action (`GET /api/approve`). Delete
 opens a confirmation page warning that all resources in the resource group will
 be removed, and only the confirming click deletes anything.
 
-The runbook is self-contained (no custom-module dependency): it authenticates
-with the Automation account's managed identity, queries Azure Resource Graph,
-mints the same HMAC-signed token the Function app validates, and sends the email
-through Azure Communication Services. The owner's click lands on the Function
-app's `GET /api/extend` endpoint, which validates the token and adds 30 days to
+The runbook has no repository module dependency. The Automation template creates
+a custom PowerShell 7.2 Runtime Environment with `Az 11.2.0` and
+`Az.ResourceGraph 0.13.0`, and the deployment script associates the runbook with
+that environment. The runbook authenticates with the account's managed
+identity, queries Azure Resource Graph, mints the same HMAC-signed token the
+Function app validates, and sends the email through Azure Communication
+Services. The owner's click lands on the Function app's `GET /api/extend`
+endpoint, which validates the token and adds 30 days to
 `sandbox-lifecycle_expiresOn`.
 
-Provision the Automation Account, its Reader role, encrypted configuration
-variables, and daily schedule, then publish the runbook:
+Provision the Automation Account in the same resource group as the Function
+app, its Reader role, encrypted configuration variables, Runtime Environment,
+and daily schedule, then publish the runbook:
 
 ```powershell
 ./automation/Deploy-SandboxAutomation.ps1 `
@@ -373,6 +320,11 @@ variables, and daily schedule, then publish the runbook:
   -AcsSenderAddress 'donotreply@<your-domain>.azurecomm.net' `
   -ApprovalBaseUrl 'https://<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>.azurewebsites.net'
 ```
+
+The default resource group is `rg-sbx-approval`. Override `-ResourceGroupName`
+when the solution uses a different resource group. The default Runtime
+Environment name is `sandbox-powershell-7-2`; override
+`-RuntimeEnvironmentName` when needed.
 
 The Automation identity only needs **Reader** on the subscription; the extension
 tag write is performed by the Function app's identity, not the runbook.

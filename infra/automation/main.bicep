@@ -6,11 +6,20 @@ metadata description = 'Provisions an Automation Account whose managed identity 
 @description('Azure region for the Automation resources.')
 param location string
 
-@description('Resource group that holds the Automation Account.')
-param resourceGroupName string = 'rg-sbx-automation'
+@description('Resource group that holds the sandbox lifecycle solution.')
+param resourceGroupName string = 'rg-sbx-approval'
 
 @description('Name of the Automation Account.')
 param automationAccountName string
+
+@description('Name of the PowerShell 7.2 Runtime Environment used by the expiry-notice runbook.')
+param runtimeEnvironmentName string = 'sandbox-powershell-7-2'
+
+@description('Version of the default Az package in the Runtime Environment.')
+param azModuleVersion string = '11.2.0'
+
+@description('PowerShell Gallery version of Az.ResourceGraph to install in the Runtime Environment.')
+param resourceGraphModuleVersion string = '0.13.0'
 
 @description('Shared HMAC secret; must match the Function app SANDBOX_SIGNING_SECRET.')
 @secure()
@@ -40,6 +49,9 @@ module automation './modules/automation-account.bicep' = {
   params: {
     location: location
     automationAccountName: automationAccountName
+    runtimeEnvironmentName: runtimeEnvironmentName
+    azModuleVersion: azModuleVersion
+    resourceGraphModuleVersion: resourceGraphModuleVersion
     signingSecret: signingSecret
     acsConnectionString: acsConnectionString
     acsSenderAddress: acsSenderAddress
@@ -61,6 +73,9 @@ output automationAccountName string = automation.outputs.automationAccountName
 
 @description('Name of the daily schedule to link the runbook job to.')
 output scheduleName string = automation.outputs.scheduleName
+
+@description('Name of the Runtime Environment for the expiry-notice runbook.')
+output runtimeEnvironmentName string = automation.outputs.runtimeEnvironmentName
 
 @description('Principal ID granted Reader on this subscription.')
 output automationPrincipalId string = automation.outputs.principalId
