@@ -348,6 +348,11 @@ owner a signed link that extends their sandbox by 30 days. If no one acts, the
 sandbox simply stays flagged on the dashboard for a human to review — nothing is
 deleted on a timer.
 
+The owner notice offers two signed choices: a green **Extend 30 days** action
+(`GET /api/extend`) and a red **Delete now** action (`GET /api/approve`). Delete
+opens a confirmation page warning that all resources in the resource group will
+be removed, and only the confirming click deletes anything.
+
 The runbook is self-contained (no custom-module dependency): it authenticates
 with the Automation account's managed identity, queries Azure Resource Graph,
 mints the same HMAC-signed token the Function app validates, and sends the email

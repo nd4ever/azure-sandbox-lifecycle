@@ -76,11 +76,12 @@ function ConvertTo-Base64Url {
     return [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 }
 
-function New-ExtendToken {
+function New-SandboxToken {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Builds a token string and performs no state change.')]
     param(
         [string]$SubscriptionId,
         [string]$ResourceGroup,
+        [string]$Action,
         [string]$Secret,
         [int]$TtlHours,
         [DateTimeOffset]$Now
@@ -88,7 +89,7 @@ function New-ExtendToken {
     $payload = [ordered]@{
         aud = 'sandbox-approval'
         aid = [guid]::NewGuid().ToString()
-        act = 'extend'
+        act = $Action
         exp = [int64]$Now.AddHours($TtlHours).ToUnixTimeSeconds()
         rgs = @([ordered]@{ s = $SubscriptionId; n = $ResourceGroup })
     }
@@ -181,17 +182,23 @@ foreach ($sandbox in $sandboxes) {
     if ($expires -gt $now.AddDays($NotifyWithinDays)) { continue }
 
     $daysRemaining = [Math]::Ceiling(($expires - $now).TotalDays)
-    $token = New-ExtendToken -SubscriptionId ([string]$sandbox.subscriptionId) -ResourceGroup ([string]$sandbox.name) -Secret $SigningSecret -TtlHours $TokenTtlHours -Now $now
-    $extendUrl = "$baseUrl/api/extend?token=$([uri]::EscapeDataString($token))"
+    $extendToken = New-SandboxToken -SubscriptionId ([string]$sandbox.subscriptionId) -ResourceGroup ([string]$sandbox.name) -Action 'extend' -Secret $SigningSecret -TtlHours $TokenTtlHours -Now $now
+    $deleteToken = New-SandboxToken -SubscriptionId ([string]$sandbox.subscriptionId) -ResourceGroup ([string]$sandbox.name) -Action 'approve' -Secret $SigningSecret -TtlHours $TokenTtlHours -Now $now
+    $extendUrl = "$baseUrl/api/extend?token=$([uri]::EscapeDataString($extendToken))"
+    $deleteUrl = "$baseUrl/api/approve?token=$([uri]::EscapeDataString($deleteToken))"
 
     $status = if ($daysRemaining -lt 0) { "expired $([math]::Abs($daysRemaining)) day(s) ago" } else { "expiring in $daysRemaining day(s)" }
     $html = @"
 <div style="font-family:'Segoe UI',Aptos,sans-serif;color:#242424;max-width:600px;">
   <h2>Your Azure sandbox is $status</h2>
   <p>Sandbox <strong>$([System.Net.WebUtility]::HtmlEncode($sandbox.name))</strong> is scheduled to be cleaned up.</p>
-  <p>If you still need it, extend it by <strong>$ExtensionDays days</strong>:</p>
-  <p><a href="$extendUrl" style="background:#107c10;color:#fff;padding:12px 22px;border-radius:4px;font-weight:600;text-decoration:none;">Extend $ExtensionDays days</a></p>
-  <p style="color:#605e5c;font-size:13px;">If you take no action the sandbox stays flagged for manual cleanup. This link expires in $TokenTtlHours hours.</p>
+  <p>Extend it by <strong>$ExtensionDays days</strong> if you still need it, or delete it now if you are done:</p>
+  <p>
+    <a href="$extendUrl" style="background:#107c10;color:#fff;padding:12px 22px;border-radius:4px;font-weight:600;text-decoration:none;">Extend $ExtensionDays days</a>
+    &nbsp;&nbsp;
+    <a href="$deleteUrl" style="background:#a4262c;color:#fff;padding:12px 22px;border-radius:4px;font-weight:600;text-decoration:none;">Delete now</a>
+  </p>
+  <p style="color:#605e5c;font-size:13px;">Delete asks you to confirm and will remove all resources in the resource group. If you take no action the sandbox stays flagged for manual cleanup. These links expire in $TokenTtlHours hours.</p>
 </div>
 "@
 
