@@ -15,9 +15,11 @@ self-contained HTML dashboard.
 ## Capabilities
 
 * Provision lifecycle-tagged resource groups through subscription-scoped Bicep
+* Give every sandbox a default 30-day lifecycle
 * Notify owners at 80 percent actual and 100 percent forecasted monthly spend
 * Restrict deployments to approved Azure regions with Azure Policy
 * Extend active or expired sandboxes without recreating resources
+* Email owners a self-service extension link before expiry via an Azure Automation runbook
 * Delete expired sandboxes after a configurable grace period
 * Export a searchable, filterable inventory dashboard with CSV download
 * Serve the inventory dashboard live from the approval Function app (optional)
@@ -335,6 +337,40 @@ https://<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>.azurewebsites.net/api/inventory?toke
 Add an optional `&subscriptionId=<id>` to target a specific subscription; by
 default it uses the Function identity's subscription context. The `token` must
 equal the Function app's `SANDBOX_SIGNING_SECRET`.
+
+## Owner self-service extension with Azure Automation
+
+Sandboxes are created with a default 30-day lifecycle and are never deleted
+automatically. An Azure Automation runbook,
+[automation/runbooks/Send-SandboxExpiryNotice.ps1](automation/runbooks/Send-SandboxExpiryNotice.ps1),
+runs on a daily schedule, finds sandboxes at or near expiry, and emails each
+owner a signed link that extends their sandbox by 30 days. If no one acts, the
+sandbox simply stays flagged on the dashboard for a human to review — nothing is
+deleted on a timer.
+
+The runbook is self-contained (no custom-module dependency): it authenticates
+with the Automation account's managed identity, queries Azure Resource Graph,
+mints the same HMAC-signed token the Function app validates, and sends the email
+through Azure Communication Services. The owner's click lands on the Function
+app's `GET /api/extend` endpoint, which validates the token and adds 30 days to
+`sandbox-lifecycle_expiresOn`.
+
+Provision the Automation Account, its Reader role, encrypted configuration
+variables, and daily schedule, then publish the runbook:
+
+```powershell
+./automation/Deploy-SandboxAutomation.ps1 `
+  -SubscriptionId '<SUBSCRIPTION_ID>' `
+  -Location '<AZURE_REGION>' `
+  -AutomationAccountName '<AUTOMATION_ACCOUNT_NAME>' `
+  -SigningSecret (Read-Host -AsSecureString 'Signing secret') `
+  -AcsConnectionString (Read-Host -AsSecureString 'ACS connection string') `
+  -AcsSenderAddress 'donotreply@<your-domain>.azurecomm.net' `
+  -ApprovalBaseUrl 'https://<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>.azurewebsites.net'
+```
+
+The Automation identity only needs **Reader** on the subscription; the extension
+tag write is performed by the Function app's identity, not the runbook.
 
 ## Lifecycle metadata
 
