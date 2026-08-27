@@ -338,6 +338,65 @@ stored as the encrypted `SandboxTeamsWorkflowUrl` Automation variable.
 The Automation identity only needs **Reader** on the subscription; the extension
 tag write is performed by the Function app's identity, not the runbook.
 
+## Deployed Azure resources
+
+This solution deploys resources across three resource groups. The names below
+are the defaults; rename them freely with the parameters and module inputs noted
+earlier. The sandbox resource groups are created on demand, one per sandbox,
+while the approval and notification groups are shared platform infrastructure.
+
+### Sandbox resource groups (one per sandbox)
+
+Created by `New-AzSandbox` through [infra/main.bicep](infra/main.bicep). The
+resource group name is whatever you pass to `-Name` (for example
+`rg-sbx-api-001`).
+
+| Resource                     | Azure resource type                         | Resource group      | Notes                                              |
+|------------------------------|---------------------------------------------|---------------------|----------------------------------------------------|
+| Sandbox resource group       | `Microsoft.Resources/resourceGroups`        | (the group itself)  | Carries the `sandbox-lifecycle_*` lifecycle tags   |
+| Allowed-locations assignment | `Microsoft.Authorization/policyAssignments` | the sandbox group   | Restricts deployments to the approved regions      |
+| Monthly budget               | `Microsoft.Consumption/budgets`             | the sandbox group   | Emails the owner at 80% actual and 100% forecast   |
+| Budget cleanup action group  | `Microsoft.Insights/actionGroups`           | the sandbox group   | Only when `-BudgetWebhookUrl` is supplied          |
+
+### Approval and automation resource group (`rg-sbx-approval`)
+
+Shared infrastructure created by [infra/approval/main.bicep](infra/approval/main.bicep)
+and [infra/automation/main.bicep](infra/automation/main.bicep). Both templates
+default to `rg-sbx-approval`.
+
+| Resource                      | Azure resource type                                   | Resource group   | Notes                                                     |
+|-------------------------------|-------------------------------------------------------|------------------|-----------------------------------------------------------|
+| Approval resource group       | `Microsoft.Resources/resourceGroups`                  | `rg-sbx-approval`| Holds the Function app and Automation account             |
+| Storage account               | `Microsoft.Storage/storageAccounts`                   | `rg-sbx-approval`| Identity-based host storage (`stsbxappr*` by default)     |
+| Deployment blob container     | `Microsoft.Storage/storageAccounts/blobServices/containers` | `rg-sbx-approval`| `app-package` container for the Function code       |
+| Function hosting plan         | `Microsoft.Web/serverfarms`                           | `rg-sbx-approval`| Flex Consumption (FC1), Linux                             |
+| Approval Function app         | `Microsoft.Web/sites`                                 | `rg-sbx-approval`| PowerShell 7.4; signs and validates owner actions         |
+| Automation account            | `Microsoft.Automation/automationAccounts`             | `rg-sbx-approval`| Runs the daily owner-notification runbook                 |
+| Runtime environment           | `Microsoft.Automation/automationAccounts/runtimeEnvironments` | `rg-sbx-approval`| `sandbox-powershell-7-2` with pinned `Az`         |
+| Runtime package               | `Microsoft.Automation/automationAccounts/runtimeEnvironments/packages` | `rg-sbx-approval`| `Az.ResourceGraph`                       |
+| Automation variables          | `Microsoft.Automation/automationAccounts/variables`   | `rg-sbx-approval`| Encrypted signing secret, ACS, base URL, Teams URL        |
+| Daily schedule                | `Microsoft.Automation/automationAccounts/schedules`   | `rg-sbx-approval`| `daily-expiry-notice`                                     |
+
+### Notification resource group (`rg-sbx-notifications`)
+
+Provisioned once with the Azure CLI (see the notifications setup earlier), not
+through the Bicep templates.
+
+| Resource                     | Azure resource type                              | Resource group         | Notes                                    |
+|------------------------------|--------------------------------------------------|------------------------|------------------------------------------|
+| Notification resource group  | `Microsoft.Resources/resourceGroups`             | `rg-sbx-notifications` | Holds the Communication Services setup   |
+| Communication Services       | `Microsoft.Communication/communicationServices`  | `rg-sbx-notifications` | Sends owner email                        |
+| Email Communication Services | `Microsoft.Communication/emailServices`          | `rg-sbx-notifications` | Parent for the managed email domain      |
+| Azure-managed email domain   | `Microsoft.Communication/emailServices/domains`  | `rg-sbx-notifications` | Free managed domain, no DNS setup        |
+
+### Role assignments
+
+| Identity                      | Role                    | Scope                | Resource type                                |
+|-------------------------------|-------------------------|----------------------|----------------------------------------------|
+| Function app managed identity | Storage Blob Data Owner | Approval storage     | `Microsoft.Authorization/roleAssignments`    |
+| Function app managed identity | Contributor             | Target subscription  | `Microsoft.Authorization/roleAssignments`    |
+| Automation managed identity   | Reader                  | Target subscription  | `Microsoft.Authorization/roleAssignments`    |
+
 ## Lifecycle metadata
 
 The resource group is the source of truth for lifecycle state:
