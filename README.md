@@ -1,7 +1,7 @@
 ---
 title: Azure Sandbox Lifecycle
 description: PowerShell and Bicep automation for governed, time-bound Azure sandbox resource groups
-ms.date: 2026-08-26
+ms.date: 2026-09-01
 ms.topic: overview
 ---
 
@@ -281,6 +281,12 @@ https://<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>.azurewebsites.net/api/inventory?toke
 Add an optional `&subscriptionId=<id>` to target a specific subscription; by
 default it uses the Function identity's subscription context. The `token` must
 equal the Function app's `SANDBOX_SIGNING_SECRET`.
+
+The hosted inventory includes **Extend 30 days** and **Delete** actions for each
+sandbox. The Function creates short-lived signed action tokens on the server,
+and each action opens the existing confirmation page before changing or deleting
+the resource group. Dashboards exported with `Export-AzSandboxDashboard` remain
+read-only and do not contain action tokens.
 
 ## Owner self-service extension with Azure Automation
 
