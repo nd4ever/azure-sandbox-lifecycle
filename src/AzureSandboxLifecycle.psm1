@@ -714,6 +714,8 @@ function ConvertTo-AzSandboxDashboardHtml {
             status           = [string]$_.Status
             monthlyBudget    = $_.MonthlyBudget
             allowedLocations = @($_.AllowedLocations)
+            extendUrl        = [string]$_.ExtendUrl
+            deleteUrl        = [string]$_.DeleteUrl
         }
     })
 
@@ -807,7 +809,7 @@ function ConvertTo-AzSandboxDashboardHtml {
         button:hover { border-color: var(--cp-accent-hover); color: var(--cp-accent-hover); }
         input:focus, select:focus, button:focus { outline: 3px solid var(--cp-highlight); outline-offset: 1px; }
         .table-wrap { overflow-x: auto; border: 1px solid var(--cp-border); border-radius: 0.625rem; background: var(--cp-surface); }
-    table { width: 100%; min-width: 1000px; border-collapse: collapse; table-layout: fixed; }
+    table { width: 100%; min-width: 1240px; border-collapse: collapse; table-layout: fixed; }
         th, td { padding: 13px 14px; border-bottom: 1px solid var(--cp-border); text-align: left; vertical-align: middle; overflow-wrap: anywhere; }
         th { color: var(--cp-text-muted); background: var(--cp-surface-soft); font-size: 12px; font-weight: 700; text-transform: uppercase; }
     tbody tr:last-child td { border-bottom: 0; }
@@ -815,6 +817,12 @@ function ConvertTo-AzSandboxDashboardHtml {
     .name { font-weight: 700; }
     .status { display: inline-block; min-width: 76px; padding: 4px 8px; border: 1px solid currentColor; border-radius: 999px; text-align: center; font-size: 12px; font-weight: 700; }
         .active { color: var(--cp-success); } .expiring { color: var(--cp-warning); } .expired { color: var(--cp-danger); } .invalid { color: var(--cp-text-soft); }
+        .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .action-link { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; padding: 0 10px; border: 1px solid currentColor; border-radius: 0.625rem; font-size: 12px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+        .action-link:hover { background: var(--cp-surface-soft); }
+        .action-link:focus { outline: 3px solid var(--cp-highlight); outline-offset: 1px; }
+        .extend-action { color: var(--cp-success); }
+        .delete-action { color: var(--cp-danger); }
         .empty { padding: 32px; color: var(--cp-text-muted); text-align: center; }
     @media (max-width: 760px) { header { padding-top: 28px; } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .toolbar { align-items: stretch; flex-direction: column; } input, select, button { width: 100%; } }
   </style>
@@ -840,7 +848,7 @@ function ConvertTo-AzSandboxDashboardHtml {
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th style="width:18%">Sandbox</th><th style="width:11%">Status</th><th style="width:18%">Owner</th><th style="width:11%">Location</th><th style="width:17%">Expires</th><th style="width:10%">Days</th><th style="width:15%">Budget</th></tr></thead>
+        <thead><tr><th style="width:16%">Sandbox</th><th style="width:9%">Status</th><th style="width:16%">Owner</th><th style="width:9%">Location</th><th style="width:14%">Expires</th><th style="width:7%">Days</th><th style="width:9%">Budget</th><th style="width:20%">Actions</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div id="empty" class="empty" hidden>No sandboxes match the current filter.</div>
@@ -854,6 +862,13 @@ function ConvertTo-AzSandboxDashboardHtml {
     const empty = document.querySelector('#empty');
     const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
     const formatDate = value => value ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Invalid tag';
+        const actionUrl = value => String(value ?? '').startsWith('/api/') ? String(value) : '';
+        const renderActions = item => {
+            const actions = [];
+            if (actionUrl(item.extendUrl)) actions.push(`<a class="action-link extend-action" href="${escapeHtml(item.extendUrl)}">Extend 30 days</a>`);
+            if (actionUrl(item.deleteUrl)) actions.push(`<a class="action-link delete-action" href="${escapeHtml(item.deleteUrl)}">Delete sandbox</a>`);
+            return actions.length ? `<div class="actions">${actions.join('')}</div>` : '-';
+        };
     const visibleRows = () => inventory.filter(item => {
       const query = search.value.trim().toLowerCase();
       const matchesQuery = !query || [item.name, item.owner, item.location, item.subscriptionId].some(value => String(value ?? '').toLowerCase().includes(query));
@@ -861,7 +876,7 @@ function ConvertTo-AzSandboxDashboardHtml {
     });
     function render() {
       const items = visibleRows();
-      rows.innerHTML = items.map(item => `<tr><td class="name">${escapeHtml(item.name)}</td><td><span class="status ${escapeHtml(item.status.toLowerCase())}">${escapeHtml(item.status)}</span></td><td>${escapeHtml(item.owner)}</td><td>${escapeHtml(item.location)}</td><td>${escapeHtml(formatDate(item.expiresOn))}</td><td>${escapeHtml(item.daysRemaining ?? '-')}</td><td>${item.monthlyBudget == null ? '-' : escapeHtml(Number(item.monthlyBudget).toLocaleString())}</td></tr>`).join('');
+    rows.innerHTML = items.map(item => `<tr><td class="name">${escapeHtml(item.name)}</td><td><span class="status ${escapeHtml(item.status.toLowerCase())}">${escapeHtml(item.status)}</span></td><td>${escapeHtml(item.owner)}</td><td>${escapeHtml(item.location)}</td><td>${escapeHtml(formatDate(item.expiresOn))}</td><td>${escapeHtml(item.daysRemaining ?? '-')}</td><td>${item.monthlyBudget == null ? '-' : escapeHtml(Number(item.monthlyBudget).toLocaleString())}</td><td>${renderActions(item)}</td></tr>`).join('');
       empty.hidden = items.length !== 0;
     }
     function updateMetrics() {
@@ -898,6 +913,11 @@ function Get-AzSandboxDashboardHtml {
     .PARAMETER SubscriptionId
         Azure subscription IDs to include. Defaults to every subscription the caller can
         access in the tenant.
+    .PARAMETER SigningSecret
+        Optional HMAC secret used to add short-lived extend and delete links. Omit it
+        when exporting a local dashboard that should not contain action links.
+    .PARAMETER ActionTtlHours
+        Lifetime of generated dashboard action links.
     .EXAMPLE
         Get-AzSandboxDashboardHtml
     .OUTPUTS
@@ -907,10 +927,30 @@ function Get-AzSandboxDashboardHtml {
     [OutputType([string])]
     param(
         [Parameter(Mandatory = $false)]
-        [string[]]$SubscriptionId = @()
+        [string[]]$SubscriptionId = @(),
+
+        [Parameter(Mandatory = $false)]
+        [string]$SigningSecret,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateRange(1, 168)]
+        [int]$ActionTtlHours = 8
     )
 
     $Inventory = @(Get-AzSandbox -SubscriptionId $SubscriptionId)
+    if (-not [string]::IsNullOrWhiteSpace($SigningSecret)) {
+        foreach ($Sandbox in $Inventory) {
+            $Candidate = [pscustomobject]@{
+                SubscriptionId   = [string]$Sandbox.SubscriptionId
+                ResourceGroupName = [string]$Sandbox.Name
+            }
+            $AuditId = [guid]::NewGuid().ToString()
+            $ExtendToken = New-AzSandboxApprovalToken -AuditId $AuditId -Action 'extend' -Candidate @($Candidate) -Secret $SigningSecret -TtlHours $ActionTtlHours
+            $DeleteToken = New-AzSandboxApprovalToken -AuditId $AuditId -Action 'approve' -Candidate @($Candidate) -Secret $SigningSecret -TtlHours $ActionTtlHours
+            $Sandbox | Add-Member -NotePropertyName ExtendUrl -NotePropertyValue "/api/extend?token=$([uri]::EscapeDataString($ExtendToken))" -Force
+            $Sandbox | Add-Member -NotePropertyName DeleteUrl -NotePropertyValue "/api/approve?token=$([uri]::EscapeDataString($DeleteToken))" -Force
+        }
+    }
     return ConvertTo-AzSandboxDashboardHtml -Inventory $Inventory
 }
 

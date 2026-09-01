@@ -47,7 +47,7 @@ $SubscriptionId = [string]$Request.Query.subscriptionId
 $SubscriptionParameter = if ([string]::IsNullOrWhiteSpace($SubscriptionId)) { @() } else { @($SubscriptionId) }
 
 try {
-    $Html = Get-AzSandboxDashboardHtml -SubscriptionId $SubscriptionParameter
+    $Html = Get-AzSandboxDashboardHtml -SubscriptionId $SubscriptionParameter -SigningSecret $Secret
 }
 catch {
     $Message = [System.Net.WebUtility]::HtmlEncode([string]$_.Exception.Message)

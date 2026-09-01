@@ -201,6 +201,7 @@ Describe 'Export-AzSandboxDashboard' -Tag 'Unit' {
         $Html | Should -Match 'Azure sandbox inventory'
         $Html | Should -Match 'scoutTheme'
         $Html | Should -Match '--cp-accent'
+        $Html | Should -Not -Match '/api/(extend|approve)\?token='
     }
 
     It 'Returns the dashboard HTML as a string' {
@@ -209,6 +210,22 @@ Describe 'Export-AzSandboxDashboard' -Tag 'Unit' {
         $Html | Should -BeOfType [string]
         $Html | Should -Match 'Azure sandbox inventory'
         $Html | Should -Match 'id="rows"'
+    }
+
+    It 'Adds signed extend and delete actions when a signing secret is supplied' {
+        $Html = Get-AzSandboxDashboardHtml -SigningSecret 'shared-secret' -ActionTtlHours 1
+        $InventoryMatch = [regex]::Match($Html, "atob\('([^']+)'\)")
+        $InventoryJson = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($InventoryMatch.Groups[1].Value))
+        $DashboardRow = @($InventoryJson | ConvertFrom-Json)[0]
+
+        $DashboardRow.extendUrl | Should -Match '^/api/extend\?token='
+        $DashboardRow.deleteUrl | Should -Match '^/api/approve\?token='
+        $Html | Should -Not -Match 'shared-secret'
+
+        $ExtendToken = [uri]::UnescapeDataString(($DashboardRow.extendUrl -split '\?token=', 2)[1])
+        $DeleteToken = [uri]::UnescapeDataString(($DashboardRow.deleteUrl -split '\?token=', 2)[1])
+        (Test-AzSandboxApprovalToken -Token $ExtendToken -Secret 'shared-secret').act | Should -Be 'extend'
+        (Test-AzSandboxApprovalToken -Token $DeleteToken -Secret 'shared-secret').act | Should -Be 'approve'
     }
 }
 
