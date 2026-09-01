@@ -237,7 +237,7 @@ function generate() {
   d.actor('owner', 'Sandbox owner', 1270, 108, 150, 66);
 
   // --- Azure ---
-  d.container('azure', 'Azure — Management-Subscription', 40, 250, 1440, 780, 'region');
+  d.container('azure', 'Azure \u2014 mattjone-mg management group  \u00b7  platform infra in Management-Subscription', 40, 250, 1440, 780, 'region');
 
   // Notifications RG
   d.container('rgNotify', 'rg-sbx-notifications', 80, 300, 260, 210, 'resourceGroup', true);
@@ -248,7 +248,7 @@ function generate() {
   d.iconCell('automation', 'Automation Account\nDaily notice · Reader',     'automation', 410, 360);
   d.iconCell('func',       'Approval Function App\nFlex Consumption · PS 7.4', 'funcApp', 590, 360);
   d.iconCell('storage',    'Storage account\n(identity-based)',           'storage', 770, 360);
-  d.iconCell('sysMi',      'Function system MI\nContributor on sub',        'managedId', 960, 360);
+  d.iconCell('sysMi',      'Function system MI\nContributor on mgmt group',        'managedId', 960, 360);
 
   // Provisioning guardrails
   d.container('rgGov', 'Provisioning guardrails (Bicep)', 1120, 300, 300, 250, 'resourceGroup', true);
@@ -259,16 +259,16 @@ function generate() {
   d.iconCell('actionGroup', 'Action Group\nbudget \u2192 cleanup', 'monitor', 1150, 560);
 
   // Managed sandboxes
-  d.container('sandboxes', 'Managed sandbox resource groups  ·  tag: sandbox-lifecycle_managed = true', 80, 700, 1340, 300, 'workloadGroup');
-  d.container('rg1', 'rg-sbx-api-001 (active)', 130, 760, 360, 210, 'resourceGroup', true);
+  d.container('sandboxes', 'Managed sandbox resource groups  \u00b7  any subscription in the group  \u00b7  tag: sandbox-lifecycle_managed = true', 80, 700, 1340, 300, 'workloadGroup');
+  d.container('rg1', 'rg-sbx-api-001  \u00b7  Sandbox-Sub (active)', 130, 760, 360, 210, 'resourceGroup', true);
   d.iconCell('vm1',  'VM',      'vm',      190, 820);
   d.iconCell('st1',  'Storage', 'storage', 360, 820);
 
-  d.container('rg2', 'rg-sbx-data-001 (active)', 560, 760, 360, 210, 'resourceGroup', true);
+  d.container('rg2', 'rg-sbx-data-001  \u00b7  Workload-Sub (active)', 560, 760, 360, 210, 'resourceGroup', true);
   d.iconCell('sql2', 'SQL DB',  'sqlDb',   620, 820);
   d.iconCell('st2',  'Storage', 'storage', 790, 820);
 
-  d.container('rg3', 'rg-sbx-sim-001 (expired)', 990, 760, 380, 210, 'resourceGroup', true);
+  d.container('rg3', 'rg-sbx-sim-001  \u00b7  Sandbox-Sub (expired)', 990, 760, 380, 210, 'resourceGroup', true);
   d.iconCell('vm3',  'VM',      'vm',      1050, 820);
   d.iconCell('st3',  'Storage', 'storage', 1230, 820);
 
@@ -281,7 +281,7 @@ function generate() {
   d.connect('func', 'storage',     { fromSide: 'right', toSide: 'left', label: 'host storage' });
   d.connect('func', 'sysMi',       { fromSide: 'right', toSide: 'left', label: 'uses' });
   d.connect('sysMi', 'rg3',        { fromSide: 'bottom', toSide: 'top', label: 'tags / deletes RG', color: '#A4262C', width: 3 });
-  d.connect('automation', 'sandboxes', { fromSide: 'bottom', toSide: 'top', label: 'Resource Graph read', color: '#1565C0' });
+  d.connect('automation', 'sandboxes', { fromSide: 'bottom', toSide: 'top', label: 'Resource Graph read \u00b7 all subscriptions', color: '#1565C0' });
   d.connect('policy', 'rg1', { fromSide: 'bottom', toSide: 'top', color: '#7B1FA2', dashed: true, label: 'governs' });
   d.connect('budget', 'rg2', { fromSide: 'bottom', toSide: 'top', color: '#7B1FA2', dashed: true });
   d.connect('budget', 'actionGroup', { fromSide: 'bottom', toSide: 'top', color: '#E65100', width: 2, label: '100% actual' });
