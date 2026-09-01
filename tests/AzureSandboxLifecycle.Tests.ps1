@@ -39,6 +39,22 @@ Describe 'Get-AzSandbox' -Tag 'Unit' {
         $Result.MonthlyBudget | Should -Be 250
         $Result.AllowedLocations | Should -HaveCount 2
     }
+
+    It 'Queries every accessible subscription when none is specified' {
+        Get-AzSandbox | Out-Null
+
+        Should -Invoke Search-AzGraph -ModuleName AzureSandboxLifecycle -Times 1 -Exactly -ParameterFilter {
+            -not $PesterBoundParameters.ContainsKey('Subscription')
+        }
+    }
+
+    It 'Scopes the query when subscription IDs are supplied' {
+        Get-AzSandbox -SubscriptionId '00000000-0000-0000-0000-000000000002' | Out-Null
+
+        Should -Invoke Search-AzGraph -ModuleName AzureSandboxLifecycle -Times 1 -Exactly -ParameterFilter {
+            $PesterBoundParameters['Subscription'] -contains '00000000-0000-0000-0000-000000000002'
+        }
+    }
 }
 
 Describe 'New-AzSandbox' -Tag 'Unit' {
@@ -436,6 +452,11 @@ Describe 'Send-SandboxExpiryNotice owner actions' -Tag 'Unit' {
     It 'Supports isolating delivery to one resource group' {
         $script:RunbookSource.Contains('[string]$ResourceGroupName') | Should -BeTrue
         $script:RunbookSource.Contains('[string]::Equals([string]$sandbox.name, $ResourceGroupName') | Should -BeTrue
+    }
+
+    It 'Keeps notifying expired sandboxes without a past-expiry cutoff' {
+        $script:RunbookSource.Contains('$expires -gt $now.AddDays($NotifyWithinDays)') | Should -BeTrue
+        $script:RunbookSource.Contains('$expires -lt $now.AddDays(-$NotifyWithinDays)') | Should -BeFalse
     }
 }
 
