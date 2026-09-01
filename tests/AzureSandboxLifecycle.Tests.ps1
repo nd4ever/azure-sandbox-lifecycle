@@ -420,6 +420,11 @@ Describe 'Send-SandboxExpiryNotice owner actions' -Tag 'Unit' {
         $script:RunbookSource.Contains('[string]$ResourceGroupName') | Should -BeTrue
         $script:RunbookSource.Contains('[string]::Equals([string]$sandbox.name, $ResourceGroupName') | Should -BeTrue
     }
+
+    It 'Keeps notifying expired sandboxes without a past-expiry cutoff' {
+        $script:RunbookSource.Contains('$expires -gt $now.AddDays($NotifyWithinDays)') | Should -BeTrue
+        $script:RunbookSource.Contains('$expires -lt $now.AddDays(-$NotifyWithinDays)') | Should -BeFalse
+    }
 }
 
 Describe 'Deploy-SandboxAutomation runtime association' -Tag 'Unit' {

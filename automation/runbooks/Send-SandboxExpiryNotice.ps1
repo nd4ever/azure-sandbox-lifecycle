@@ -18,7 +18,8 @@
 .PARAMETER TeamsWorkflowUrl
     Optional Power Automate HTTP trigger URL that posts an Adaptive Card to recipientUpn.
 .PARAMETER NotifyWithinDays
-    Notify owners of sandboxes expiring within this many days (includes already-expired).
+    Start notifying owners this many days before expiry. Already-expired sandboxes are
+    always notified until they are extended or deleted.
 .PARAMETER ExtensionDays
     Days the extension link grants. Matches the extend endpoint.
 .PARAMETER TokenTtlHours
@@ -278,7 +279,8 @@ foreach ($sandbox in $sandboxes) {
         [ref]$expires)
 
     if (-not $parsed -or [string]::IsNullOrWhiteSpace($owner)) { continue }
-    if ($expires -gt $now.AddDays($NotifyWithinDays) -or $expires -lt $now.AddDays(-$NotifyWithinDays)) { continue }
+    # Notify within the pre-expiry lead time and keep notifying for as long as it stays expired.
+    if ($expires -gt $now.AddDays($NotifyWithinDays)) { continue }
 
     $daysRemaining = [Math]::Ceiling(($expires - $now).TotalDays)
     $extendToken = New-SandboxToken -SubscriptionId ([string]$sandbox.subscriptionId) -ResourceGroup ([string]$sandbox.name) -Action 'extend' -Secret $SigningSecret -TtlHours $TokenTtlHours -Now $now
