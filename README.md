@@ -290,8 +290,9 @@ automatically. An Azure Automation runbook,
 runs on a daily schedule, finds sandboxes at or near expiry, and emails each
 owner a signed link that extends their sandbox by 30 days. If no one acts, the
 sandbox simply stays flagged on the dashboard for a human to review — nothing is
-deleted on a timer. Daily reminders stop after the sandbox has been expired for
-the configured notification window (seven days by default).
+deleted on a timer. Reminders begin within the configured lead time before expiry
+(seven days by default) and continue every day the sandbox stays expired, until an
+owner extends or deletes it.
 
 The owner notice offers two signed choices: a green **Extend 30 Days** action
 (`GET /api/extend`) and a red **Delete Sandbox** action (`GET /api/approve`).
