@@ -301,9 +301,9 @@ so the inventory is not exposed anonymously:
 https://<GLOBALLY_UNIQUE_FUNCTION_APP_NAME>.azurewebsites.net/api/inventory?token=<STRONG_SHARED_SECRET>
 ```
 
-Add an optional `&subscriptionId=<id>` to target a specific subscription; by
-default it uses the Function identity's subscription context. The `token` must
-equal the Function app's `SANDBOX_SIGNING_SECRET`.
+Add an optional `&subscriptionId=<id>` to narrow the view to one subscription; by
+default the page lists sandboxes from every subscription the Function identity can
+access. The `token` must equal the Function app's `SANDBOX_SIGNING_SECRET`.
 
 The hosted inventory includes **Extend 30 days** and **Delete** actions for each
 sandbox. The Function creates short-lived signed action tokens on the server,

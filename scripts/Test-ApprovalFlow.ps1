@@ -14,7 +14,7 @@
     Shared HMAC secret. Use the same value you set as the Function app's
     SANDBOX_SIGNING_SECRET when you later deploy.
 .PARAMETER SubscriptionId
-    Subscriptions to inspect for expired sandboxes. Defaults to the active context.
+    Subscriptions to inspect for expired sandboxes. Defaults to every accessible subscription.
 .PARAMETER ResourceGroupName
     Target a specific resource group instead of scanning for expired sandboxes.
 .PARAMETER Action

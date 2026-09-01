@@ -562,7 +562,8 @@ function Remove-AzExpiredSandbox {
     .SYNOPSIS
         Removes lifecycle-managed Azure sandboxes that have expired.
     .PARAMETER SubscriptionId
-        Azure subscription IDs to inspect. Defaults to the active Azure context.
+        Azure subscription IDs to inspect. Defaults to every subscription the caller can
+        access in the tenant.
     .PARAMETER GracePeriodHours
         Number of hours to wait after expiration before deletion is allowed.
     .PARAMETER ManagedIdentityClientId
@@ -1486,7 +1487,8 @@ function Invoke-AzSandboxCleanupAudit {
         falls back to SMTP when an SMTP server is supplied, and otherwise simulates the
         email. A Teams webhook URL additionally posts an approval card.
     .PARAMETER SubscriptionId
-        Azure subscription IDs to inspect. Defaults to the active Azure context.
+        Azure subscription IDs to inspect. Defaults to every subscription the caller can
+        access in the tenant.
     .PARAMETER GracePeriodHours
         Number of hours after expiration before a sandbox becomes a deletion candidate.
     .PARAMETER ApproverEmail
