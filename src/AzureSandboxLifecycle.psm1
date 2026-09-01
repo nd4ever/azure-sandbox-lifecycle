@@ -370,7 +370,8 @@ function Get-AzSandbox {
         Queries Azure Resource Graph for resource groups managed by this module and adds
         calculated lifecycle status and days remaining.
     .PARAMETER SubscriptionId
-        Azure subscription IDs to query. Defaults to the active Azure context.
+        Azure subscription IDs to query. Defaults to every subscription the caller can
+        access in the tenant.
     .EXAMPLE
         Get-AzSandbox | Sort-Object DaysRemaining
     .OUTPUTS
@@ -383,13 +384,7 @@ function Get-AzSandbox {
         [string[]]$SubscriptionId = @()
     )
 
-    $Context = Select-AzSandboxSubscriptionContext
-    $TargetSubscriptions = if ($SubscriptionId.Count -eq 0) {
-        @([string]$Context.Subscription.Id)
-    }
-    else {
-        $SubscriptionId
-    }
+    Select-AzSandboxSubscriptionContext | Out-Null
 
     $Query = @"
 resourcecontainers
@@ -399,7 +394,13 @@ resourcecontainers
 | order by name asc
 "@
 
-    $Resources = Search-AzGraph -Query $Query -Subscription $TargetSubscriptions -First 1000 -ErrorAction Stop
+    # Omitting -Subscription lets Resource Graph span every subscription the caller can read.
+    $GraphParameters = @{ Query = $Query; First = 1000; ErrorAction = 'Stop' }
+    if ($SubscriptionId.Count -gt 0) {
+        $GraphParameters['Subscription'] = $SubscriptionId
+    }
+
+    $Resources = Search-AzGraph @GraphParameters
     foreach ($Resource in $Resources) {
         ConvertTo-AzSandboxRecord -Resource $Resource
     }
@@ -895,7 +896,8 @@ function Get-AzSandboxDashboardHtml {
         Produces the same dashboard as Export-AzSandboxDashboard but returns the HTML
         instead of writing a file, so a web endpoint can serve it live.
     .PARAMETER SubscriptionId
-        Azure subscription IDs to include. Defaults to the active Azure context.
+        Azure subscription IDs to include. Defaults to every subscription the caller can
+        access in the tenant.
     .EXAMPLE
         Get-AzSandboxDashboardHtml
     .OUTPUTS
@@ -919,7 +921,8 @@ function Export-AzSandboxDashboard {
     .PARAMETER Path
         Destination HTML file path.
     .PARAMETER SubscriptionId
-        Azure subscription IDs to include. Defaults to the active Azure context.
+        Azure subscription IDs to include. Defaults to every subscription the caller can
+        access in the tenant.
     .EXAMPLE
         Export-AzSandboxDashboard -Path './out/sandboxes.html'
     .OUTPUTS
