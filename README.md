@@ -226,6 +226,29 @@ network access to storage, the Bicep tags the storage account with
 access so the platform can reach the deployment container. Remove those tags if
 your environment does not use that exception convention.
 
+### Cross-subscription access
+
+The approval deployment grants the Function identity Contributor on the
+subscription it deploys into, so it can manage sandboxes there. When sandboxes
+live in more than one subscription, grant the identity a role across a management
+group instead so the inventory and the extend and delete actions work in every
+subscription under it. Deploy
+[infra/approval/management-group-role.bicep](infra/approval/management-group-role.bicep)
+at the management group scope with the Function identity principal ID (the
+`functionPrincipalId` output from the approval deployment):
+
+```bash
+az deployment mg create \
+  --management-group-id <MANAGEMENT_GROUP_ID> \
+  --location <AZURE_LOCATION> \
+  --template-file infra/approval/management-group-role.bicep \
+  --parameters functionPrincipalId=<FUNCTION_APP_PRINCIPAL_ID>
+```
+
+The default role is Contributor so button clicks can extend and delete
+sandboxes. Pass `roleDefinitionId` to grant a narrower role, such as Reader, for
+inventory only.
+
 Use the `approvalBaseUrl` output for the `SandboxApprovalBaseUrl` Automation
 variable. Use the same `signingSecret` value for the Function app setting
 `SANDBOX_SIGNING_SECRET`, the encrypted `SandboxSigningSecret` Automation
@@ -402,7 +425,11 @@ through the Bicep templates.
 |-------------------------------|-------------------------|----------------------|----------------------------------------------|
 | Function app managed identity | Storage Blob Data Owner | Approval storage     | `Microsoft.Authorization/roleAssignments`    |
 | Function app managed identity | Contributor             | Target subscription  | `Microsoft.Authorization/roleAssignments`    |
+| Function app managed identity | Contributor             | Management group     | `Microsoft.Authorization/roleAssignments`    |
 | Automation managed identity   | Reader                  | Target subscription  | `Microsoft.Authorization/roleAssignments`    |
+
+The management group assignment is optional. Use it when sandboxes span multiple
+subscriptions so the Function identity can inventory and act on all of them.
 
 ## Lifecycle metadata
 
