@@ -1,7 +1,7 @@
 ---
 title: Azure Sandbox Lifecycle
 description: PowerShell and Bicep automation for governed, time-bound Azure sandbox resource groups
-ms.date: 2026-09-01
+ms.date: 2026-09-03
 ms.topic: overview
 ---
 
@@ -359,6 +359,31 @@ and daily schedule, then publish the runbook:
   -TeamsWorkflowUrl (Read-Host -AsSecureString 'Power Automate workflow URL')
 ```
 
+The deployment grants the Automation identity Reader on its deployment
+subscription. When sandboxes live in multiple subscriptions, grant the identity
+Reader across their management group so Azure Resource Graph can discover every
+eligible sandbox. Deploy
+[infra/automation/management-group-role.bicep](infra/automation/management-group-role.bicep)
+with the `automationPrincipalId` output from the Automation deployment:
+
+```bash
+az deployment mg create \
+  --management-group-id <MANAGEMENT_GROUP_ID> \
+  --location <AZURE_LOCATION> \
+  --template-file infra/automation/management-group-role.bicep \
+  --parameters automationPrincipalId=<AUTOMATION_ACCOUNT_PRINCIPAL_ID>
+```
+
+The management-group assignment defaults to Reader. The runbook only discovers
+sandboxes and sends notifications; the Function app identity performs extension
+and deletion writes.
+
+> [!IMPORTANT]
+> Management-group roles apply to every current and future descendant
+> subscription. Target a dedicated sandbox management group when possible. If
+> the management group also contains unrelated workloads, grant Reader only on
+> the subscriptions that host sandboxes instead.
+
 The default resource group is `rg-sbx-approval`. Override `-ResourceGroupName`
 when the solution uses a different resource group. The default Runtime
 Environment name is `sandbox-powershell-7-2`; override
@@ -427,9 +452,12 @@ through the Bicep templates.
 | Function app managed identity | Contributor             | Target subscription  | `Microsoft.Authorization/roleAssignments`    |
 | Function app managed identity | Contributor             | Management group     | `Microsoft.Authorization/roleAssignments`    |
 | Automation managed identity   | Reader                  | Target subscription  | `Microsoft.Authorization/roleAssignments`    |
+| Automation managed identity   | Reader                  | Management group     | `Microsoft.Authorization/roleAssignments`    |
 
-The management group assignment is optional. Use it when sandboxes span multiple
-subscriptions so the Function identity can inventory and act on all of them.
+The two management-group assignments are optional and independent. Use the
+Function assignment when it must inventory and act on sandboxes across
+subscriptions. Use the Automation assignment when it must discover those
+sandboxes and notify their owners.
 
 ## Lifecycle metadata
 

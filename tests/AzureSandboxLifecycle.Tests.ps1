@@ -466,6 +466,8 @@ Describe 'Deploy-SandboxAutomation runtime association' -Tag 'Unit' {
         $script:DeploymentScriptSource = Get-Content -LiteralPath $DeploymentScriptPath -Raw
         $AutomationModulePath = Join-Path $PSScriptRoot '../infra/automation/modules/automation-account.bicep'
         $script:AutomationModuleSource = Get-Content -LiteralPath $AutomationModulePath -Raw
+        $AutomationManagementRolePath = Join-Path $PSScriptRoot '../infra/automation/management-group-role.bicep'
+        $script:AutomationManagementRoleSource = Get-Content -LiteralPath $AutomationManagementRolePath -Raw
     }
 
     It 'Checks the existing Runtime Environment before applying an association' {
@@ -478,6 +480,16 @@ Describe 'Deploy-SandboxAutomation runtime association' -Tag 'Unit' {
         $script:AutomationModuleSource.Contains("resource teamsWorkflowUrlVar 'Microsoft.Automation/automationAccounts/variables@2023-11-01' = {") | Should -BeTrue
         $script:AutomationModuleSource.Contains("resource teamsWorkflowUrlVar 'Microsoft.Automation/automationAccounts/variables@2023-11-01' = if") | Should -BeFalse
         $script:AutomationModuleSource.Contains('value: ''"${teamsWorkflowUrl ?? ''''}"''') | Should -BeTrue
+    }
+
+    It 'Provides management-group Reader access for cross-subscription notifications' {
+        $script:AutomationManagementRoleSource.Contains("targetScope = 'managementGroup'") | Should -BeTrue
+        $script:AutomationManagementRoleSource.Contains('param automationPrincipalId string') | Should -BeTrue
+        $script:AutomationManagementRoleSource.Contains("'acdd72a7-3385-48ef-bd42-f606fba81ae7'") | Should -BeTrue
+        $script:AutomationManagementRoleSource.Contains('name: guid(managementGroup().id, automationPrincipalId, roleDefinitionId)') | Should -BeTrue
+        $script:AutomationManagementRoleSource.Contains('principalId: automationPrincipalId') | Should -BeTrue
+        $script:AutomationManagementRoleSource.Contains('roleDefinitionId: roleDefinitionId') | Should -BeTrue
+        $script:AutomationManagementRoleSource.Contains("principalType: 'ServicePrincipal'") | Should -BeTrue
     }
 }
 
